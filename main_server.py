@@ -68,6 +68,10 @@ class ServerGame:
         self._tick = 0
         self.state = STATE_PLAYING
 
+        # Splash "IP à donner aux clients" affiché en superposition pendant quelques secondes
+        self._local_ip = local_ip
+        self._ip_splash_timer = 8.0   # secondes d'affichage
+
         self._init_world()
         self.hud   = HUD()
         self.menus = Menus()
@@ -317,6 +321,10 @@ class ServerGame:
         # ---- Machine d'amélioration ----
         self.upgrade_machine.update(dt)
 
+        # ---- Splash IP ----
+        if self._ip_splash_timer > 0:
+            self._ip_splash_timer -= dt
+
         # ---- Camera host ----
         if host:
             self.camera.update(host.rect)
@@ -485,12 +493,38 @@ class ServerGame:
             self.upgrade_machine.draw_hud_prompt(self.screen, SCREEN_W, SCREEN_H, host)
         self.upgrade_machine.draw_result_message(self.screen, SCREEN_W, SCREEN_H)
 
-        # Indicateur de connexion
+        # Indicateur de connexion (barre en bas)
         font_net = pygame.font.SysFont("Arial", 13)
         nb_clients = len(self.server.clients)
         net_txt = font_net.render(
-            f"HOST | {nb_clients} client(s) connecte(s)", True, (180, 220, 180))
-        self.screen.blit(net_txt, (10, 10))
+            f"HOST  {self._local_ip}:{NET_PORT}  |  {nb_clients} client(s)",
+            True, (180, 220, 180))
+        self.screen.blit(net_txt, (10, SCREEN_H - 20))
+
+        # Splash IP en grand (8 premières secondes)
+        if self._ip_splash_timer > 0:
+            alpha = min(255, int(self._ip_splash_timer / 8.0 * 255 * 3))
+            alpha = min(255, alpha)
+            font_ip_big  = pygame.font.SysFont("Arial", 28, bold=True)
+            font_ip_sub  = pygame.font.SysFont("Arial", 18)
+            splash_w, splash_h = 500, 90
+            splash_x = SCREEN_W // 2 - splash_w // 2
+            splash_y = SCREEN_H - 130
+            bg = pygame.Surface((splash_w, splash_h), pygame.SRCALPHA)
+            bg.fill((0, 0, 0, min(200, alpha)))
+            self.screen.blit(bg, (splash_x, splash_y))
+            pygame.draw.rect(self.screen, (80, 200, 80),
+                             (splash_x, splash_y, splash_w, splash_h), 2, border_radius=6)
+            t1 = font_ip_big.render(
+                f"Donnez cette IP aux clients : {self._local_ip}", True, (120, 255, 120))
+            t2 = font_ip_sub.render(
+                f"port {NET_PORT}  —  python main_client.py {self._local_ip}  [Nom]",
+                True, (180, 220, 180))
+            t1.set_alpha(alpha); t2.set_alpha(alpha)
+            self.screen.blit(t1, (splash_x + splash_w // 2 - t1.get_width() // 2,
+                                  splash_y + 12))
+            self.screen.blit(t2, (splash_x + splash_w // 2 - t2.get_width() // 2,
+                                  splash_y + 52))
 
 
 # ------------------------------------------------------------------

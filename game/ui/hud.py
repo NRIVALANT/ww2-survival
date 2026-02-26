@@ -149,6 +149,12 @@ class HUD:
                                  (sx, sy + slot_h - 4, prog_w, 4))
 
     def _draw_crosshair(self, surface: pygame.Surface):
+        self.draw_crosshair(surface)
+
+    @staticmethod
+    def draw_crosshair(surface: pygame.Surface):
+        """Dessine le viseur custom et s'assure que le curseur système est caché."""
+        pygame.mouse.set_visible(False)   # forcer caché à chaque frame de jeu
         mx, my = pygame.mouse.get_pos()
         size = 10
         gap  = 4

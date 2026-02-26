@@ -15,10 +15,13 @@ from settings import NET_PORT
 class GameClient:
     """
     Client WebSocket tourne dans un thread asyncio daemon.
-    Communique avec le thread pygame via deux queues thread-safe.
+    Communique avec le thread pygame via :
+      - _async_send_queue : asyncio.Queue (zéro latence côté envoi)
+      - receive_queue     : queue.Queue thread-safe (lecture pygame)
 
-    send_queue    : le thread pygame pousse les inputs a envoyer
-    receive_queue : le thread pygame lit les game_states recus
+    Le thread pygame appelle send_input() et get_messages() librement.
+    L'envoi est event-driven : dès qu'un message est mis dans _async_send_queue
+    il part immédiatement sans polling ni sleep.
     """
 
     def __init__(self, server_ip: str, player_name: str):
@@ -26,8 +29,11 @@ class GameClient:
         self.player_name = player_name
         self.player_id   = None
 
-        self.send_queue:    queue.Queue = queue.Queue()
+        # Queue de réception (thread pygame lit ici)
         self.receive_queue: queue.Queue = queue.Queue()
+
+        # asyncio.Queue créée dans le thread asyncio (évite les race conditions)
+        self._async_send_queue: asyncio.Queue | None = None
 
         self._running   = False
         self._connected = threading.Event()
@@ -36,12 +42,15 @@ class GameClient:
 
     # ------------------------------------------------------------------
     async def _send_loop(self, ws):
+        """Envoi event-driven : attend un item dans la queue asyncio, l'envoie immédiatement."""
         while self._running:
             try:
-                msg = self.send_queue.get_nowait()
+                msg = await asyncio.wait_for(self._async_send_queue.get(), timeout=0.5)
                 await ws.send(encode(msg))
-            except queue.Empty:
-                await asyncio.sleep(0.001)
+            except asyncio.TimeoutError:
+                continue   # juste pour vérifier _running régulièrement
+            except Exception:
+                break
 
     async def _recv_loop(self, ws):
         async for raw in ws:
@@ -49,6 +58,9 @@ class GameClient:
             self.receive_queue.put(msg)
 
     async def _connect_and_run(self):
+        # Créer la asyncio.Queue dans le bon loop
+        self._async_send_queue = asyncio.Queue()
+
         uri = f"ws://{self.server_ip}:{NET_PORT}"
         try:
             async with ws_connect(uri) as ws:
@@ -66,7 +78,7 @@ class GameClient:
                 self.receive_queue.put(welcome)
                 self._connected.set()
 
-                # Lancer send + recv en parallele
+                # Lancer send + recv en parallèle
                 self._running = True
                 await asyncio.gather(
                     self._send_loop(ws),
@@ -74,7 +86,7 @@ class GameClient:
                 )
         except Exception as e:
             self.receive_queue.put({"type": "error", "reason": str(e)})
-            self._connected.set()   # debloquer wait_connected meme en cas d'erreur
+            self._connected.set()   # débloquer wait_connected même en cas d'erreur
 
     def start_in_thread(self):
         def _thread_func():
@@ -96,7 +108,10 @@ class GameClient:
 
     # ------------------------------------------------------------------
     def send_input(self, input_dict: dict):
-        self.send_queue.put(input_dict)
+        """Appelé depuis le thread pygame — pousse l'input dans la asyncio.Queue sans délai."""
+        if self._loop and self._async_send_queue is not None:
+            # call_soon_threadsafe est thread-safe et réveille immédiatement le loop asyncio
+            self._loop.call_soon_threadsafe(self._async_send_queue.put_nowait, input_dict)
 
     def get_messages(self) -> list[dict]:
         msgs = []

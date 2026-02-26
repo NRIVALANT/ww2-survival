@@ -299,16 +299,12 @@ class ClientGame:
                 self.screen, SCREEN_W, SCREEN_H, self._make_fake_player())
         self.upgrade_machine.draw_result_message(self.screen, SCREEN_W, SCREEN_H)
 
-        # Indicateur connexion
+        # Indicateur connexion (en bas)
         net_txt = self._font_small.render("CLIENT connecte", True, (180, 220, 180))
-        self.screen.blit(net_txt, (10, 10))
+        self.screen.blit(net_txt, (10, SCREEN_H - 20))
 
-        # Crosshair
-        mx, my = pygame.mouse.get_pos()
-        pygame.draw.line(self.screen, COL_WHITE, (mx-10, my), (mx-4, my), 2)
-        pygame.draw.line(self.screen, COL_WHITE, (mx+4,  my), (mx+10, my), 2)
-        pygame.draw.line(self.screen, COL_WHITE, (mx, my-10), (mx, my-4), 2)
-        pygame.draw.line(self.screen, COL_WHITE, (mx, my+4),  (mx, my+10), 2)
+        # Crosshair unifié (cache aussi le curseur système)
+        HUD.draw_crosshair(self.screen)
 
     def _draw_remote_player(self, p: dict, is_local: bool):
         sx, sy = self.camera.apply_pos(p["x"], p["y"])

@@ -18,10 +18,11 @@ from settings import NET_PORT, NET_MAX_PLAYERS
 class GameServer:
     """
     Serveur WebSocket tourne dans un thread asyncio daemon.
-    Communique avec le thread pygame via deux queues thread-safe.
+    Communique avec le thread pygame via :
+      - input_queue        : queue.Queue thread-safe (pygame lit les inputs reçus)
+      - _async_bcast_queue : asyncio.Queue (broadcast event-driven, zéro latence)
 
-    input_queue   : recoit les messages/inputs des clients
-    broadcast_queue: recoit les game_state JSON a envoyer a tous les clients
+    Le thread pygame appelle broadcast() et get_pending_inputs() librement.
     """
 
     def __init__(self):
@@ -29,8 +30,11 @@ class GameServer:
         self.player_names: dict[int, str] = {}
         self.next_player_id = 2   # host = 1
 
-        self.input_queue:     queue.Queue = queue.Queue()
-        self.broadcast_queue: queue.Queue = queue.Queue()
+        # Queue de réception (thread pygame lit ici)
+        self.input_queue: queue.Queue = queue.Queue()
+
+        # asyncio.Queue pour le broadcast (créée dans le thread asyncio)
+        self._async_bcast_queue: asyncio.Queue | None = None
 
         self._running = False
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -80,7 +84,7 @@ class GameServer:
                 "player_name": self.player_names[player_id],
             })
 
-            # Boucle de reception des inputs
+            # Boucle de réception des inputs
             async for raw_msg in websocket:
                 msg = decode(raw_msg)
                 self.input_queue.put({
@@ -101,10 +105,10 @@ class GameServer:
                 })
 
     async def _broadcast_loop(self):
-        """Depile broadcast_queue et envoie a tous les clients."""
+        """Broadcast event-driven : attend un message dans la asyncio.Queue, l'envoie immédiatement."""
         while self._running:
             try:
-                msg_str = self.broadcast_queue.get_nowait()
+                msg_str = await asyncio.wait_for(self._async_bcast_queue.get(), timeout=0.5)
                 if self.clients:
                     tasks = [
                         asyncio.create_task(ws.send(msg_str))
@@ -112,14 +116,18 @@ class GameServer:
                     ]
                     if tasks:
                         await asyncio.gather(*tasks, return_exceptions=True)
-            except queue.Empty:
-                await asyncio.sleep(0.001)
+            except asyncio.TimeoutError:
+                continue   # vérifier _running
+            except Exception:
+                continue
 
     async def _run(self):
+        # Créer la asyncio.Queue dans le bon loop
+        self._async_bcast_queue = asyncio.Queue()
         self._running = True
         broadcast_task = asyncio.create_task(self._broadcast_loop())
         async with ws_serve(self._handler, "0.0.0.0", NET_PORT) as server:
-            # Tourner indefiniment
+            # Tourner indéfiniment
             await asyncio.get_running_loop().create_future()
         broadcast_task.cancel()
 
@@ -142,11 +150,12 @@ class GameServer:
 
     # ------------------------------------------------------------------
     def broadcast(self, msg_str: str):
-        """Appele depuis le thread pygame pour broadcaster un etat."""
-        self.broadcast_queue.put(msg_str)
+        """Appelé depuis le thread pygame — broadcast event-driven sans polling."""
+        if self._loop and self._async_bcast_queue is not None:
+            self._loop.call_soon_threadsafe(self._async_bcast_queue.put_nowait, msg_str)
 
     def get_pending_inputs(self) -> list[dict]:
-        """Appele depuis le thread pygame pour recuperer les inputs clients."""
+        """Appelé depuis le thread pygame pour récupérer les inputs clients."""
         inputs = []
         while not self.input_queue.empty():
             try:
