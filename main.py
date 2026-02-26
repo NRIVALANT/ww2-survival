@@ -5,7 +5,7 @@ import sys
 from settings import (
     SCREEN_W, SCREEN_H, FPS, TITLE,
     STATE_MENU, STATE_PLAYING, STATE_PAUSED, STATE_GAMEOVER,
-    TILE_SIZE,
+    TILE_SIZE, UPGRADE_MACHINE_TILE,
 )
 from game.world.tilemap   import TileMap
 from game.world.camera    import Camera
@@ -15,6 +15,7 @@ from game.systems.pathfinding import Pathfinder
 from game.systems.wave_manager import WaveManager
 from game.ui.hud   import HUD
 from game.ui.menus import Menus
+from game.entities.upgrade_machine import UpgradeMachine
 
 
 class Game:
@@ -51,6 +52,10 @@ class Game:
         px, py = PLAYER_START
         self.player = Player(px, py)
 
+        # Machine d'amélioration (style CoD Zombies)
+        col, row = UPGRADE_MACHINE_TILE
+        self.upgrade_machine = UpgradeMachine(col, row)
+
         self.wave_manager = WaveManager(
             tilemap        = self.tilemap,
             pathfinder     = self.pathfinder,
@@ -82,6 +87,10 @@ class Game:
             self.player.handle_event(event)
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self.state = STATE_PAUSED
+            # Interaction avec la machine d'amelioration
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_f:
+                if self.upgrade_machine.player_in_range(self.player):
+                    self.upgrade_machine.try_upgrade(self.player)
 
         elif self.state == STATE_PAUSED:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -120,7 +129,9 @@ class Game:
                 enemy.update(dt, self.tilemap, self.player,
                              self.bullet_group, self.explosion_group)
                 if not enemy.alive:
-                    self.player.add_score(enemy.score_value)
+                    kill_pts = enemy.score_value
+                    self.player.add_score(kill_pts)
+                    self.player.add_score_popup(f"+{kill_pts}", enemy.pos)
                     dead_enemies.append(enemy)
 
             # Balles
@@ -150,6 +161,12 @@ class Game:
                     self.enemy_group.remove(e)
                 if e in self.all_sprites:
                     self.all_sprites.remove(e)
+
+            # Machine d'amelioration
+            self.upgrade_machine.update(dt)
+
+            # Popups de score
+            self.player.update_popups(dt)
 
             # Camera
             self.camera.update(self.player.rect)
@@ -187,6 +204,9 @@ class Game:
         for pickup in self.pickup_group:
             pickup.draw(self.screen, self.camera, font_small)
 
+        # Machine d'amelioration
+        self.upgrade_machine.draw(self.screen, self.camera, self.player)
+
         # Joueur
         self.player.draw(self.screen, self.camera)
 
@@ -208,6 +228,15 @@ class Game:
 
         # HUD
         self.hud.draw(self.screen, self.player, self.wave_manager)
+
+        # Popups de points flottants
+        self.hud.draw_score_popups(self.screen, self.player, self.camera)
+
+        # Prompt machine d'amelioration
+        if self.upgrade_machine.player_in_range(self.player):
+            self.upgrade_machine.draw_hud_prompt(
+                self.screen, SCREEN_W, SCREEN_H, self.player)
+        self.upgrade_machine.draw_result_message(self.screen, SCREEN_W, SCREEN_H)
 
         # Pause par dessus
         if self.state == STATE_PAUSED:

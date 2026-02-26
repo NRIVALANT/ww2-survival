@@ -121,11 +121,14 @@ class Enemy(pygame.sprite.Sprite):
 
     # ------------------------------------------------------------------
     def take_damage(self, amount: int):
+        if not self.alive:
+            return
         self.hp -= amount
         if self.hp <= 0:
             self.hp    = 0
             self.alive = False
-            self.kill()
+            # Ne pas appeler self.kill() ici : main.py détecte la mort via
+            # enemy.alive et retire l'ennemi des groupes (dead_enemies).
 
     # ------------------------------------------------------------------
     def draw(self, surface: pygame.Surface, camera):

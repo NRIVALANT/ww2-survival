@@ -34,6 +34,7 @@ class Player(pygame.sprite.Sprite):
         self.max_hp = PLAYER_HP
         self.alive  = True
         self.score  = 0
+        self.score_popups: list[dict] = []   # [{"text","x","y","timer"}]
 
         # Armes : copies des definitions
         self.weapons: dict[str, dict] = {}
@@ -220,6 +221,24 @@ class Player(pygame.sprite.Sprite):
 
     def add_score(self, amount: int):
         self.score += amount
+
+    def add_score_popup(self, text: str, world_pos):
+        """Ajoute un popup de points flottant au-dessus de la position."""
+        self.score_popups.append({
+            "text":  text,
+            "x":     float(world_pos.x),
+            "y":     float(world_pos.y),
+            "timer": 1.0,   # durée de vie en secondes
+        })
+        # Limiter le nombre de popups simultanés
+        if len(self.score_popups) > 20:
+            self.score_popups.pop(0)
+
+    def update_popups(self, dt: float):
+        """Met à jour les timers des popups (appeler chaque frame)."""
+        for p in self.score_popups:
+            p["timer"] -= dt
+        self.score_popups = [p for p in self.score_popups if p["timer"] > 0]
 
     # ------------------------------------------------------------------
     def draw(self, surface: pygame.Surface, camera):
