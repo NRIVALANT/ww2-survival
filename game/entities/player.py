@@ -7,7 +7,7 @@ from settings import (
     PLAYER_SPEED, PLAYER_HP, PLAYER_RADIUS, PLAYER_IFRAMES,
     WEAPONS, WEAPON_ORDER,
     COL_PLAYER, COL_HELMET_P, COL_BLACK, COL_WHITE, COL_GREY,
-    TILE_SIZE, PLAYER_COLORS, DOWN_TIMEOUT, REVIVE_TIME,
+    TILE_SIZE, PLAYER_COLORS, DOWN_TIMEOUT, REVIVE_TIME, KEYBINDS,
 )
 from game.systems.collision import move_and_collide
 
@@ -84,10 +84,10 @@ class Player(pygame.sprite.Sprite):
 
         # Mouvement
         dx = dy = 0
-        if keys[pygame.K_w] or keys[pygame.K_UP]:    dy -= 1
-        if keys[pygame.K_s] or keys[pygame.K_DOWN]:  dy += 1
-        if keys[pygame.K_a] or keys[pygame.K_LEFT]:  dx -= 1
-        if keys[pygame.K_d] or keys[pygame.K_RIGHT]: dx += 1
+        if keys[KEYBINDS["move_up"]]:    dy -= 1
+        if keys[KEYBINDS["move_down"]]:  dy += 1
+        if keys[KEYBINDS["move_left"]]:  dx -= 1
+        if keys[KEYBINDS["move_right"]]: dx += 1
 
         if dx != 0 and dy != 0:
             dx *= 0.7071
@@ -132,7 +132,7 @@ class Player(pygame.sprite.Sprite):
                     self._shoot(world_mouse, bullet_group, enemy_group)
 
         # Rechargement manuel
-        if keys[pygame.K_r] and not self.is_reloading:
+        if keys[KEYBINDS["reload"]] and not self.is_reloading:
             wdata = self.get_weapon_data()
             if "reload_time" in wdata and self.ammo.get(self.active_weapon, 0) < wdata["max_ammo"]:
                 self.is_reloading = True
@@ -143,17 +143,16 @@ class Player(pygame.sprite.Sprite):
         if event.type == pygame.MOUSEWHEEL:
             self._cycle_weapon(-event.y)
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_q:
+            if event.key == KEYBINDS["weapon_prev"]:
                 self._cycle_weapon(-1)
-            elif event.key in (pygame.K_1, pygame.K_KP1):
+            elif event.key == KEYBINDS["slot_1"]:
                 self.active_weapon_idx = 0
-            elif event.key in (pygame.K_2, pygame.K_KP2):
+            elif event.key == KEYBINDS["slot_2"]:
                 self.active_weapon_idx = 1
-            elif event.key in (pygame.K_3, pygame.K_KP3):
+            elif event.key == KEYBINDS["slot_3"]:
                 self.active_weapon_idx = 2
-            elif event.key in (pygame.K_4, pygame.K_KP4):
+            elif event.key == KEYBINDS["slot_4"]:
                 self.active_weapon_idx = 3
-            # K_e est reserve au revive en multi (gere ailleurs)
 
     def _cycle_weapon(self, direction: int):
         self.active_weapon_idx = (self.active_weapon_idx + direction) % len(WEAPON_ORDER)

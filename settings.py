@@ -168,3 +168,26 @@ UPGRADE_MACHINE_TILE    = (19, 17)  # position tuile de la machine (col, row)
 
 COL_UPGRADE_MACHINE  = (80, 180, 255)   # couleur de la machine
 COL_POINTS_POPUP     = (255, 220, 60)   # couleur des popups "+pts"
+
+# --- Raccourcis clavier (modifiables en jeu) ---
+import pygame as _pg
+KEYBINDS: dict = {
+    "move_up":    _pg.K_w,
+    "move_down":  _pg.K_s,
+    "move_left":  _pg.K_a,
+    "move_right": _pg.K_d,
+    "reload":     _pg.K_r,
+    "weapon_prev": _pg.K_q,
+    "revive":     _pg.K_e,
+    "upgrade":    _pg.K_f,
+    "pause":      _pg.K_ESCAPE,
+    "slot_1":     _pg.K_1,
+    "slot_2":     _pg.K_2,
+    "slot_3":     _pg.K_3,
+    "slot_4":     _pg.K_4,
+}
+KEYBINDS_DEFAULT: dict = dict(KEYBINDS)  # copie pour reset
+
+# --- Etats supplementaires ---
+STATE_SETTINGS     = "settings"
+STATE_NETWORK_MENU = "network_menu"

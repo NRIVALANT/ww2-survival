@@ -6,11 +6,11 @@ import socket
 
 from settings import (
     SCREEN_W, SCREEN_H, FPS, TITLE,
-    STATE_PLAYING, STATE_GAMEOVER, STATE_MENU,
+    STATE_PLAYING, STATE_GAMEOVER, STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU,
     PLAYER_SPEED, WEAPONS, WEAPON_ORDER, PLAYER_COLORS,
     NET_PORT, NET_BROADCAST_RATE,
     REVIVE_RANGE, REVIVE_TIME, DOWN_TIMEOUT,
-    UPGRADE_MACHINE_TILE,
+    UPGRADE_MACHINE_TILE, KEYBINDS,
 )
 from game.entities.upgrade_machine import UpgradeMachine
 from game.world.tilemap    import TileMap
@@ -35,10 +35,11 @@ from game.network.messages import (
 class ServerGame:
     """Boucle de jeu autorité. Simule tout, broadcaste l'état."""
 
-    def __init__(self, host_name: str = "Host"):
-        pygame.init()
+    def __init__(self, host_name: str = "Host", screen: pygame.Surface | None = None):
+        if not pygame.get_init():
+            pygame.init()
         pygame.display.set_caption(f"{TITLE}  [HOST: {self._get_local_ip()}:{NET_PORT}]")
-        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        self.screen = screen if screen is not None else pygame.display.set_mode((SCREEN_W, SCREEN_H))
         self.clock  = pygame.time.Clock()
         pygame.mouse.set_visible(False)
 
@@ -140,9 +141,7 @@ class ServerGame:
         host = self.players.get(self.host_player_id)
         if not host:
             return
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            pass   # Pause non implementee en multi
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_f:
+        if event.type == pygame.KEYDOWN and event.key == KEYBINDS["upgrade"]:
             if self.upgrade_machine.player_in_range(host):
                 msg = self.upgrade_machine.try_upgrade(host)
                 self.server.broadcast(encode({"type": "upgrade_result",
@@ -213,12 +212,12 @@ class ServerGame:
                 self.bullet_group, self.grenade_group,
                 self.explosion_group, list(self.enemy_group),
             )
-            # Revive via touche E
-            if keys[pygame.K_e]:
+            # Revive via touche configurable
+            if keys[KEYBINDS["revive"]]:
                 self._try_revive(self.host_player_id, dt)
             else:
                 if host:
-                    # Reset progress si la touche E est relachee
+                    # Reset progress si la touche est relachee
                     for pid, target in self.players.items():
                         if pid != self.host_player_id and target.state == "down":
                             if (host.pos - target.pos).length() <= REVIVE_RANGE:
@@ -489,7 +488,80 @@ class ServerGame:
 
 
 # ------------------------------------------------------------------
+def _pre_menu() -> tuple[str, pygame.Surface]:
+    """
+    Affiche le menu principal puis le menu réseau (HÉBERGER pré-sélectionné).
+    Retourne (nom_du_host, surface) quand le joueur confirme HÉBERGER.
+    """
+    from game.ui.menus import Menus, NET_MENU_HOST
+
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    pygame.display.set_caption(TITLE)
+    pygame.mouse.set_visible(False)
+    clock  = pygame.time.Clock()
+    menus  = Menus()
+    # Pré-sélectionner l'option HÉBERGER dans le menu réseau
+    menus._net_selected = 0
+
+    state = STATE_MENU
+    settings_return = STATE_MENU
+
+    while True:
+        dt = clock.tick(FPS) / 1000.0
+        dt = min(dt, 0.05)
+        menus.update(dt)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            if state == STATE_MENU:
+                menus.handle_main_event(event)
+
+            elif state == STATE_NETWORK_MENU:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    state = STATE_MENU
+                else:
+                    result = menus.handle_net_event(event)
+                    if result == NET_MENU_HOST:
+                        return menus.net_name or "Host", screen
+
+            elif state == STATE_SETTINGS:
+                res = menus.handle_settings_event(event)
+                if res == "back":
+                    state = settings_return
+
+        # ---- dessin ----
+        if state == STATE_MENU:
+            action = menus.draw_main_menu(screen)
+            if action == STATE_PLAYING:
+                state = STATE_NETWORK_MENU
+            elif action == STATE_SETTINGS:
+                settings_return = STATE_MENU
+                state = STATE_SETTINGS
+            elif action == "quit":
+                pygame.quit()
+                sys.exit()
+
+        elif state == STATE_NETWORK_MENU:
+            menus.draw_network_menu(screen)
+
+        elif state == STATE_SETTINGS:
+            menus.draw_settings_menu(screen)
+
+        pygame.display.flip()
+
+
+# ------------------------------------------------------------------
 if __name__ == "__main__":
-    name = sys.argv[1] if len(sys.argv) > 1 else "Host"
-    game = ServerGame(host_name=name)
-    game.run()
+    if len(sys.argv) > 1:
+        # Lancement direct avec nom en argument (ex: python main_server.py Host)
+        pygame.init()
+        screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        pygame.mouse.set_visible(False)
+        name = sys.argv[1]
+    else:
+        name, screen = _pre_menu()
+    ServerGame(host_name=name, screen=screen).run()

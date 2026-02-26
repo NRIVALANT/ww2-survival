@@ -5,8 +5,10 @@ import sys
 from settings import (
     SCREEN_W, SCREEN_H, FPS, TITLE,
     STATE_MENU, STATE_PLAYING, STATE_PAUSED, STATE_GAMEOVER,
-    TILE_SIZE, UPGRADE_MACHINE_TILE,
+    STATE_SETTINGS, STATE_NETWORK_MENU,
+    TILE_SIZE, UPGRADE_MACHINE_TILE, KEYBINDS,
 )
+from game.ui.menus import NET_MENU_HOST, NET_MENU_JOIN, NET_MENU_LOCAL
 from game.world.tilemap   import TileMap
 from game.world.camera    import Camera
 from game.world.map_data  import MAP_DATA, PLAYER_START
@@ -16,6 +18,9 @@ from game.systems.wave_manager import WaveManager
 from game.ui.hud   import HUD
 from game.ui.menus import Menus
 from game.entities.upgrade_machine import UpgradeMachine
+# Imports différés pour éviter la circularité — chargés au moment du lancement
+# from main_server import ServerGame
+# from main_client import ClientGame
 
 
 class Game:
@@ -27,6 +32,8 @@ class Game:
         pygame.mouse.set_visible(False)   # curseur personnalise
 
         self.state      = STATE_MENU
+        self._settings_return_state = STATE_MENU   # d'ou on vient quand on ouvre les paramètres
+        self._net_error: str | None = None         # message d'erreur de connexion
         self.hud        = HUD()
         self.menus      = Menus()
         self._last_gameover_wave  = 0
@@ -83,18 +90,56 @@ class Game:
 
     # ------------------------------------------------------------------
     def _handle_event(self, event):
-        if self.state == STATE_PLAYING:
-            self.player.handle_event(event)
+        if self.state == STATE_MENU:
+            self.menus.handle_main_event(event)
+
+        elif self.state == STATE_NETWORK_MENU:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self._net_error = None
+                self.state = STATE_MENU
+                return
+            result = self.menus.handle_net_event(event)
+            if result == NET_MENU_LOCAL:
+                self._init_game()
+                self.state = STATE_PLAYING
+            elif result == NET_MENU_HOST:
+                from main_server import ServerGame
+                ServerGame(
+                    host_name=self.menus.net_name or "Host",
+                    screen=self.screen,
+                ).run()
+            elif result == NET_MENU_JOIN:
+                ip = self.menus.net_ip
+                if not ip:
+                    return   # pas d'IP saisie, on ignore
+                from main_client import ClientGame
+                try:
+                    ClientGame(
+                        server_ip=ip,
+                        player_name=self.menus.net_name or "Joueur",
+                        screen=self.screen,
+                    ).run()
+                except RuntimeError as e:
+                    self._net_error = str(e)
+                    # Rester sur le menu réseau, l'erreur s'affiche dans _draw
+
+        elif self.state == STATE_PLAYING:
+            self.player.handle_event(event)
+            if event.type == pygame.KEYDOWN and event.key == KEYBINDS["pause"]:
                 self.state = STATE_PAUSED
             # Interaction avec la machine d'amelioration
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_f:
+            if event.type == pygame.KEYDOWN and event.key == KEYBINDS["upgrade"]:
                 if self.upgrade_machine.player_in_range(self.player):
                     self.upgrade_machine.try_upgrade(self.player)
 
         elif self.state == STATE_PAUSED:
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if event.type == pygame.KEYDOWN and event.key == KEYBINDS["pause"]:
                 self.state = STATE_PLAYING
+
+        elif self.state == STATE_SETTINGS:
+            result = self.menus.handle_settings_event(event)
+            if result == "back":
+                self.state = self._settings_return_state
 
     # ------------------------------------------------------------------
     def _update(self, dt: float):
@@ -179,8 +224,29 @@ class Game:
         if self.state == STATE_MENU:
             result = self.menus.draw_main_menu(self.screen)
             if result == STATE_PLAYING:
-                self._init_game()
-                self.state = STATE_PLAYING
+                # JOUER → menu réseau d'abord
+                self.state = STATE_NETWORK_MENU
+            elif result == STATE_SETTINGS:
+                self._settings_return_state = STATE_MENU
+                self.state = STATE_SETTINGS
+            elif result == "quit":
+                pygame.quit()
+                sys.exit()
+            return
+
+        if self.state == STATE_NETWORK_MENU:
+            self.menus.draw_network_menu(self.screen)
+            # Affiche l'erreur de connexion s'il y en a une
+            if self._net_error:
+                font_err = pygame.font.SysFont("Arial", 18, bold=True)
+                err_surf = font_err.render(self._net_error, True, (220, 60, 60))
+                self.screen.blit(err_surf,
+                                 (SCREEN_W // 2 - err_surf.get_width() // 2,
+                                  SCREEN_H - 52))
+            return
+
+        if self.state == STATE_SETTINGS:
+            self.menus.draw_settings_menu(self.screen)
             return
 
         if self.state == STATE_GAMEOVER:
@@ -240,7 +306,10 @@ class Game:
 
         # Pause par dessus
         if self.state == STATE_PAUSED:
-            self.menus.draw_pause(self.screen)
+            pause_result = self.menus.draw_pause(self.screen)
+            if pause_result == STATE_SETTINGS:
+                self._settings_return_state = STATE_PAUSED
+                self.state = STATE_SETTINGS
 
 
 # ------------------------------------------------------------------

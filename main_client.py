@@ -8,7 +8,8 @@ from settings import (
     WEAPON_ORDER, WEAPONS, PLAYER_COLORS,
     MAP_W, MAP_H, DOWN_TIMEOUT,
     COL_BULLET_P, COL_BULLET_E, COL_YELLOW, COL_WHITE, COL_GREY, COL_RED,
-    UPGRADE_MACHINE_TILE,
+    UPGRADE_MACHINE_TILE, KEYBINDS,
+    STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU, STATE_PLAYING,
 )
 from game.entities.upgrade_machine import UpgradeMachine
 from game.world.tilemap   import TileMap
@@ -27,10 +28,13 @@ class ClientGame:
     Envoie MSG_INPUT a 60Hz.
     """
 
-    def __init__(self, server_ip: str, player_name: str = "Joueur"):
-        pygame.init()
+    def __init__(self, server_ip: str, player_name: str = "Joueur",
+                 screen: pygame.Surface | None = None):
+        if not pygame.get_init():
+            pygame.init()
         pygame.display.set_caption(f"{TITLE}  [CLIENT: {player_name}]")
-        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        self._owns_screen = (screen is None)
+        self.screen = screen if screen is not None else pygame.display.set_mode((SCREEN_W, SCREEN_H))
         self.clock  = pygame.time.Clock()
         pygame.mouse.set_visible(False)
 
@@ -45,8 +49,11 @@ class ClientGame:
         print(f"Connexion a {server_ip}...")
         if not self.net.wait_connected(timeout=10.0):
             print("Impossible de se connecter. Verifiez l'IP et le serveur.")
-            pygame.quit()
-            sys.exit(1)
+            if self._owns_screen:
+                pygame.quit()
+                sys.exit(1)
+            else:
+                raise RuntimeError(f"Connexion impossible \u00e0 {server_ip}")
         self.player_id = self.net.player_id
         print(f"Connecte en tant que Joueur {self.player_id}")
 
@@ -100,13 +107,13 @@ class ClientGame:
         if event.type == pygame.MOUSEWHEEL:
             self._local_weapon_idx = (self._local_weapon_idx - event.y) % len(WEAPON_ORDER)
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_1: self._local_weapon_idx = 0
-            if event.key == pygame.K_2: self._local_weapon_idx = 1
-            if event.key == pygame.K_3: self._local_weapon_idx = 2
-            if event.key == pygame.K_4: self._local_weapon_idx = 3
-            if event.key == pygame.K_q:
+            if event.key == KEYBINDS["slot_1"]: self._local_weapon_idx = 0
+            if event.key == KEYBINDS["slot_2"]: self._local_weapon_idx = 1
+            if event.key == KEYBINDS["slot_3"]: self._local_weapon_idx = 2
+            if event.key == KEYBINDS["slot_4"]: self._local_weapon_idx = 3
+            if event.key == KEYBINDS["weapon_prev"]:
                 self._local_weapon_idx = (self._local_weapon_idx - 1) % len(WEAPON_ORDER)
-            if event.key == pygame.K_f and self._near_upgrade_machine():
+            if event.key == KEYBINDS["upgrade"] and self._near_upgrade_machine():
                 self.net.send_input({"type": "upgrade_req",
                                      "player_id": self.player_id})
 
@@ -161,13 +168,13 @@ class ClientGame:
         py = float(self.local_state.get("y", SCREEN_H / 2))
         aim_angle = math.degrees(math.atan2(world_my - py, world_mx - px))
 
-        dx = (1 if keys[pygame.K_d] or keys[pygame.K_RIGHT] else 0) - \
-             (1 if keys[pygame.K_a] or keys[pygame.K_LEFT]  else 0)
-        dy = (1 if keys[pygame.K_s] or keys[pygame.K_DOWN]  else 0) - \
-             (1 if keys[pygame.K_w] or keys[pygame.K_UP]    else 0)
+        dx = (1 if keys[KEYBINDS["move_right"]] else 0) - \
+             (1 if keys[KEYBINDS["move_left"]]  else 0)
+        dy = (1 if keys[KEYBINDS["move_down"]]  else 0) - \
+             (1 if keys[KEYBINDS["move_up"]]    else 0)
 
         # Recharge
-        if keys[pygame.K_r]:
+        if keys[KEYBINDS["reload"]]:
             self.net.send_input({"type": "reload_req", "player_id": self.player_id})
 
         inp = make_input(
@@ -179,7 +186,7 @@ class ClientGame:
             shooting     = bool(mbtns[0]),
             weapon_idx   = self._local_weapon_idx,
             grenade_throw= bool(mbtns[2]),
-            revive_held  = bool(keys[pygame.K_e]),
+            revive_held  = bool(keys[KEYBINDS["revive"]]),
         )
         self.net.send_input(inp)
 
@@ -534,11 +541,93 @@ class ClientGame:
 
 
 # ------------------------------------------------------------------
+def _pre_menu() -> tuple[str, str, pygame.Surface]:
+    """
+    Affiche le menu principal puis le menu réseau (REJOINDRE pré-sélectionné).
+    Retourne (server_ip, nom_joueur, surface) quand le joueur confirme REJOINDRE.
+    """
+    from game.ui.menus import Menus, NET_MENU_JOIN
+
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    pygame.display.set_caption(TITLE)
+    pygame.mouse.set_visible(False)
+    clock  = pygame.time.Clock()
+    menus  = Menus()
+    # Pré-sélectionner l'option REJOINDRE dans le menu réseau
+    menus._net_selected = 1
+
+    state = STATE_MENU
+    settings_return = STATE_MENU
+    error_msg: str | None = None
+
+    while True:
+        dt = clock.tick(FPS) / 1000.0
+        dt = min(dt, 0.05)
+        menus.update(dt)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            if state == STATE_MENU:
+                menus.handle_main_event(event)
+
+            elif state == STATE_NETWORK_MENU:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    error_msg = None
+                    state = STATE_MENU
+                else:
+                    result = menus.handle_net_event(event)
+                    if result == NET_MENU_JOIN:
+                        ip = menus.net_ip
+                        if not ip:
+                            error_msg = "Entrez une IP avant de confirmer."
+                        else:
+                            error_msg = None
+                            return ip, menus.net_name or "Joueur", screen
+
+            elif state == STATE_SETTINGS:
+                res = menus.handle_settings_event(event)
+                if res == "back":
+                    state = settings_return
+
+        # ---- dessin ----
+        if state == STATE_MENU:
+            action = menus.draw_main_menu(screen)
+            if action == STATE_PLAYING:
+                state = STATE_NETWORK_MENU
+            elif action == STATE_SETTINGS:
+                settings_return = STATE_MENU
+                state = STATE_SETTINGS
+            elif action == "quit":
+                pygame.quit()
+                sys.exit()
+
+        elif state == STATE_NETWORK_MENU:
+            menus.draw_network_menu(screen)
+            if error_msg:
+                font_err = pygame.font.SysFont("Arial", 18, bold=True)
+                err_s = font_err.render(error_msg, True, (220, 60, 60))
+                screen.blit(err_s, (SCREEN_W // 2 - err_s.get_width() // 2,
+                                    SCREEN_H - 52))
+
+        elif state == STATE_SETTINGS:
+            menus.draw_settings_menu(screen)
+
+        pygame.display.flip()
+
+
+# ------------------------------------------------------------------
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage : python main_client.py <IP_SERVEUR> [NomJoueur]")
-        sys.exit(1)
-    server_ip = sys.argv[1]
-    name      = sys.argv[2] if len(sys.argv) > 2 else "Joueur"
-    game = ClientGame(server_ip, player_name=name)
-    game.run()
+    if len(sys.argv) >= 2:
+        # Lancement direct avec IP en argument (ex: python main_client.py 192.168.1.X)
+        pygame.init()
+        screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        pygame.mouse.set_visible(False)
+        server_ip = sys.argv[1]
+        name      = sys.argv[2] if len(sys.argv) > 2 else "Joueur"
+    else:
+        server_ip, name, screen = _pre_menu()
+    ClientGame(server_ip, player_name=name, screen=screen).run()
