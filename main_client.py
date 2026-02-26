@@ -8,7 +8,9 @@ from settings import (
     WEAPON_ORDER, WEAPONS, PLAYER_COLORS,
     MAP_W, MAP_H, DOWN_TIMEOUT,
     COL_BULLET_P, COL_BULLET_E, COL_YELLOW, COL_WHITE, COL_GREY, COL_RED,
+    UPGRADE_MACHINE_TILE,
 )
+from game.entities.upgrade_machine import UpgradeMachine
 from game.world.tilemap   import TileMap
 from game.world.camera    import Camera
 from game.world.map_data  import MAP_DATA
@@ -52,6 +54,10 @@ class ClientGame:
         self.tilemap = TileMap(MAP_DATA)
         self.camera  = Camera()
 
+        # Machine d'amélioration (rendu local)
+        col, row = UPGRADE_MACHINE_TILE
+        self.upgrade_machine = UpgradeMachine(col, row)
+
         # Donnees recues du serveur
         self.remote_players:  dict[int, dict] = {}
         self.remote_enemies:  list[dict] = []
@@ -85,6 +91,7 @@ class ClientGame:
             self._process_server_messages()
             self._update_camera()
             self._send_input()
+            self.upgrade_machine.update(dt)
             self._draw()
             pygame.display.flip()
 
@@ -99,6 +106,9 @@ class ClientGame:
             if event.key == pygame.K_4: self._local_weapon_idx = 3
             if event.key == pygame.K_q:
                 self._local_weapon_idx = (self._local_weapon_idx - 1) % len(WEAPON_ORDER)
+            if event.key == pygame.K_f and self._near_upgrade_machine():
+                self.net.send_input({"type": "upgrade_req",
+                                     "player_id": self.player_id})
 
     def _process_server_messages(self):
         for msg in self.net.get_messages():
@@ -107,6 +117,9 @@ class ClientGame:
                 self._apply_state(msg)
             elif t == "game_over":
                 self.state = "gameover"
+            elif t == "upgrade_result":
+                if msg.get("player_id") == self.player_id:
+                    self.upgrade_machine._set_message(msg.get("message", ""))
             elif t == "error":
                 print(f"Erreur serveur : {msg.get('reason')}")
 
@@ -119,6 +132,10 @@ class ClientGame:
         self.wave_info       = {k: state[k] for k in
             ("wave_number", "wave_state", "wave_countdown", "enemies_remaining")
             if k in state}
+        # Sync upgrade levels depuis serveur
+        srv_levels = state.get("upgrade_levels", {})
+        if srv_levels:
+            self.upgrade_machine.upgrade_levels.update(srv_levels)
         if self.player_id in self.remote_players:
             self.local_state = self.remote_players[self.player_id]
             # Sync weapon index depuis serveur
@@ -167,6 +184,23 @@ class ClientGame:
         self.net.send_input(inp)
 
     # ------------------------------------------------------------------
+    def _near_upgrade_machine(self) -> bool:
+        """Verifie si le joueur local est a portee de la machine."""
+        px = float(self.local_state.get("x", 0))
+        py = float(self.local_state.get("y", 0))
+        return (pygame.Vector2(px, py) - self.upgrade_machine.pos).length() \
+               <= self.upgrade_machine.INTERACT_RANGE
+
+    def _make_fake_player(self):
+        """Cree un objet minimal pour draw_hud_prompt."""
+        class _FakePlayer:
+            pass
+        fp = _FakePlayer()
+        fp.active_weapon = WEAPON_ORDER[self._local_weapon_idx]
+        fp.score         = int(self.local_state.get("score", 0))
+        return fp
+
+    # ------------------------------------------------------------------
     def _draw(self):
         if self.state == "gameover":
             self.screen.fill((10, 5, 5))
@@ -184,6 +218,9 @@ class ClientGame:
             pygame.draw.circle(self.screen, COL_YELLOW, (int(sx), int(sy)), 8)
             label = self._font_small.render(pk["weapon_name"].upper(), True, COL_YELLOW)
             self.screen.blit(label, (int(sx) - label.get_width()//2, int(sy) - 18))
+
+        # Machine d'amélioration
+        self.upgrade_machine.draw(self.screen, self.camera)
 
         # Joueurs
         for pid, p in self.remote_players.items():
@@ -212,6 +249,12 @@ class ClientGame:
         # HUD depuis etat serveur
         if self.local_state:
             self._draw_client_hud()
+
+        # Prompt machine d'amélioration
+        if self._near_upgrade_machine() and self.local_state:
+            self.upgrade_machine.draw_hud_prompt(
+                self.screen, SCREEN_W, SCREEN_H, self._make_fake_player())
+        self.upgrade_machine.draw_result_message(self.screen, SCREEN_W, SCREEN_H)
 
         # Indicateur connexion
         net_txt = self._font_small.render("CLIENT connecte", True, (180, 220, 180))

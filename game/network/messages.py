@@ -6,6 +6,7 @@ import json
 MSG_JOIN        = "join"
 MSG_INPUT       = "input"
 MSG_REVIVE_REQ  = "revive_req"
+MSG_UPGRADE_REQ = "upgrade_req"
 
 # Serveur -> Client
 MSG_WELCOME        = "welcome"
@@ -19,6 +20,7 @@ MSG_PLAYER_DOWN    = "player_down"
 MSG_PLAYER_REVIVED = "player_revived"
 MSG_PLAYER_DEAD    = "player_dead"
 MSG_ERROR          = "error"
+MSG_UPGRADE_RESULT = "upgrade_result"
 
 
 # ---- Serialisation ----
@@ -54,7 +56,8 @@ def make_input(player_id: int, tick: int, dx: float, dy: float,
 
 def make_game_state(tick: int, players_data: list, enemies_data: list,
                     bullets_data: list, grenades_data: list,
-                    pickups_data: list, wave_info: dict) -> dict:
+                    pickups_data: list, wave_info: dict,
+                    upgrade_levels: dict | None = None) -> dict:
     msg = {
         "type":    MSG_GAME_STATE,
         "tick":    tick,
@@ -63,6 +66,7 @@ def make_game_state(tick: int, players_data: list, enemies_data: list,
         "bullets": bullets_data,
         "grenades": grenades_data,
         "pickups": pickups_data,
+        "upgrade_levels": upgrade_levels or {},
     }
     msg.update(wave_info)
     return msg

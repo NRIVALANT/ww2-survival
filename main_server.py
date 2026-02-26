@@ -10,7 +10,9 @@ from settings import (
     PLAYER_SPEED, WEAPONS, WEAPON_ORDER, PLAYER_COLORS,
     NET_PORT, NET_BROADCAST_RATE,
     REVIVE_RANGE, REVIVE_TIME, DOWN_TIMEOUT,
+    UPGRADE_MACHINE_TILE,
 )
+from game.entities.upgrade_machine import UpgradeMachine
 from game.world.tilemap    import TileMap
 from game.world.camera     import Camera
 from game.world.map_data   import MAP_DATA, PLAYER_START
@@ -99,6 +101,10 @@ class ServerGame:
         self.explosion_group = pygame.sprite.Group()
         self.pickup_group    = pygame.sprite.Group()
 
+        # Machine d'amélioration
+        col, row = UPGRADE_MACHINE_TILE
+        self.upgrade_machine = UpgradeMachine(col, row)
+
         players_list = list(self.players.values())
         self.wave_manager = WaveManager(
             tilemap    = self.tilemap,
@@ -136,6 +142,12 @@ class ServerGame:
             return
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             pass   # Pause non implementee en multi
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_f:
+            if self.upgrade_machine.player_in_range(host):
+                msg = self.upgrade_machine.try_upgrade(host)
+                self.server.broadcast(encode({"type": "upgrade_result",
+                                              "player_id": self.host_player_id,
+                                              "message": msg}))
         host.handle_event(event)
 
     def _process_network_messages(self):
@@ -167,6 +179,13 @@ class ServerGame:
                 inp = msg["input"]
                 if inp.get("type") == MSG_INPUT:
                     self.pending_inputs[pid] = inp
+                elif inp.get("type") == "upgrade_req":
+                    player = self.players.get(pid)
+                    if player and self.upgrade_machine.player_in_range(player):
+                        result_msg = self.upgrade_machine.try_upgrade(player)
+                        self.server.broadcast(encode({"type": "upgrade_result",
+                                                      "player_id": pid,
+                                                      "message": result_msg}))
 
     # ------------------------------------------------------------------
     def _update(self, dt: float):
@@ -282,6 +301,9 @@ class ServerGame:
         self.wave_manager.players = players_list
         self.wave_manager.update(dt)
 
+        # ---- Machine d'amélioration ----
+        self.upgrade_machine.update(dt)
+
         # ---- Camera host ----
         if host:
             self.camera.update(host.rect)
@@ -388,6 +410,7 @@ class ServerGame:
             players_data, enemies_data,
             bullets_data, grenades_data,
             pickups_data, wave_info,
+            upgrade_levels=dict(self.upgrade_machine.upgrade_levels),
         )
         self.server.broadcast(encode(snapshot))
 
@@ -412,6 +435,9 @@ class ServerGame:
         font_small = pygame.font.SysFont("Arial", 12)
         for pickup in self.pickup_group:
             pickup.draw(self.screen, self.camera, font_small)
+
+        # Machine d'amélioration
+        self.upgrade_machine.draw(self.screen, self.camera, host)
 
         # Tous les joueurs
         for player in self.players.values():
@@ -440,6 +466,11 @@ class ServerGame:
                       if pid != self.host_player_id]
             self.hud.draw_other_players_hud(self.screen, others)
             self.hud.draw_score_popups(self.screen, host, self.camera)
+
+        # Prompt machine d'amélioration (host)
+        if host and self.upgrade_machine.player_in_range(host):
+            self.upgrade_machine.draw_hud_prompt(self.screen, SCREEN_W, SCREEN_H, host)
+        self.upgrade_machine.draw_result_message(self.screen, SCREEN_W, SCREEN_H)
 
         # Indicateur de connexion
         font_net = pygame.font.SysFont("Arial", 13)
