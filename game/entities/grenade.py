@@ -50,11 +50,14 @@ class Explosion(pygame.sprite.Sprite):
                     if d <= self.blast_radius:
                         dmg = int(self.damage * max(0.2, 1.0 - d / self.blast_radius))
                         enemy.take_damage(dmg)
+            # player peut etre un seul joueur OU une liste de joueurs
             if player:
-                d = (pygame.Vector2(player.rect.center) - self.pos).length()
-                if d <= self.blast_radius:
-                    dmg = int(self.damage * max(0.2, 1.0 - d / self.blast_radius))
-                    player.take_damage(dmg)
+                targets = player if isinstance(player, list) else [player]
+                for p in targets:
+                    d = (pygame.Vector2(p.rect.center) - self.pos).length()
+                    if d <= self.blast_radius:
+                        dmg = int(self.damage * max(0.2, 1.0 - d / self.blast_radius))
+                        p.take_damage(dmg)
 
         self.timer += dt
         frame = min(self.FRAMES - 1,
@@ -120,14 +123,30 @@ class Grenade(pygame.sprite.Sprite):
         # Compte a rebours
         self.fuse_timer -= dt
         if self.fuse_timer <= 0:
+            # player peut etre un seul joueur OU une liste de joueurs
             self._detonate(enemy_group, player)
 
     def _detonate(self, enemy_group, player):
-        Explosion(
+        # Normalise player en liste pour que Explosion.update() puisse iterer
+        players_list = player if isinstance(player, list) else ([player] if player else [])
+        expl = Explosion(
             self.pos.x, self.pos.y,
             self.blast_radius, self.damage,
             groups=self._expl_groups,
         )
+        # Appliquer les degats immediatement au moment de la detonation
+        if enemy_group:
+            for enemy in enemy_group:
+                d = (pygame.Vector2(enemy.rect.center) - self.pos).length()
+                if d <= self.blast_radius:
+                    dmg = int(self.damage * max(0.2, 1.0 - d / self.blast_radius))
+                    enemy.take_damage(dmg)
+        for p in players_list:
+            d = (pygame.Vector2(p.rect.center) - self.pos).length()
+            if d <= self.blast_radius:
+                dmg = int(self.damage * max(0.2, 1.0 - d / self.blast_radius))
+                p.take_damage(dmg)
+        expl._damaged = True  # Marquer comme deja traite pour eviter double application
         self.kill()
 
     def draw(self, surface: pygame.Surface, camera):

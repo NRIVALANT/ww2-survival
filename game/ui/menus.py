@@ -56,6 +56,9 @@ class Menus:
         self._settings_selected = -1   # index ligne sélectionnée
         self._settings_waiting  = False  # en attente d'une touche
 
+        # Menu pause : résultat clic stocké par handle_pause_event, consommé par draw_pause
+        self._pause_result = None
+
         # État du menu réseau
         self._net_selected = 0          # 0=Héberger, 1=Rejoindre, 2=Solo
         self._net_ip_input = ""         # IP saisie par l'utilisateur
@@ -530,37 +533,74 @@ class Menus:
                               rect.centery - ls.get_height() // 2))
 
     # ------------------------------------------------------------------
+    def handle_pause_event(self, event: pygame.event.Event) -> None:
+        """
+        Gère les événements MOUSEBUTTONDOWN pour les boutons du menu pause.
+        Stocke le résultat dans _pause_result, consommé par draw_pause().
+        """
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            btn_w, btn_h = 260, 48
+            bx = SCREEN_W // 2 - btn_w // 2
+
+            by_settings = SCREEN_H // 2 + 30
+            if pygame.Rect(bx, by_settings, btn_w, btn_h).collidepoint(mx, my):
+                self._pause_result = STATE_SETTINGS
+                return
+
+            by_quit = SCREEN_H // 2 + 92
+            if pygame.Rect(bx, by_quit, btn_w, btn_h).collidepoint(mx, my):
+                self._pause_result = "quit"
+
+    # ------------------------------------------------------------------
     def draw_pause(self, surface: pygame.Surface) -> str | None:
-        """Superpose une couche de pause. Renvoie STATE_PLAYING ou STATE_SETTINGS."""
+        """
+        Superpose une couche de pause.
+        Renvoie STATE_SETTINGS, "quit", ou None.
+        Les clics sont enregistrés par handle_pause_event() et consommés ici.
+        """
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 140))
         surface.blit(overlay, (0, 0))
 
-        _center_text(surface, self._font_title, "PAUSE", COL_YELLOW, SCREEN_H // 2 - 100)
+        _center_text(surface, self._font_title, "PAUSE", COL_YELLOW, SCREEN_H // 2 - 110)
         _center_text(surface, self._font_sub,
                      f"[ {pygame.key.name(KEYBINDS['pause']).upper()} ]  Reprendre",
-                     COL_WHITE, SCREEN_H // 2 - 10)
+                     COL_WHITE, SCREEN_H // 2 - 20)
+
+        mx, my = pygame.mouse.get_pos()
 
         # Bouton PARAMÈTRES dans la pause
         btn_w, btn_h = 260, 48
         bx = SCREEN_W // 2 - btn_w // 2
-        by = SCREEN_H // 2 + 48
-        mx, my = pygame.mouse.get_pos()
-        is_h = pygame.Rect(bx, by, btn_w, btn_h).collidepoint(mx, my)
-        bg = pygame.Surface((btn_w, btn_h), pygame.SRCALPHA)
-        bg.fill((60, 88, 135, 210 if is_h else 150))
-        surface.blit(bg, (bx, by))
+
+        by_settings = SCREEN_H // 2 + 30
+        is_h_settings = pygame.Rect(bx, by_settings, btn_w, btn_h).collidepoint(mx, my)
+        bg_settings = pygame.Surface((btn_w, btn_h), pygame.SRCALPHA)
+        bg_settings.fill((60, 88, 135, 210 if is_h_settings else 150))
+        surface.blit(bg_settings, (bx, by_settings))
         pygame.draw.rect(surface, (90, 140, 185),
-                         (bx, by, btn_w, btn_h), 2, border_radius=6)
+                         (bx, by_settings, btn_w, btn_h), 2, border_radius=6)
         ps = self._font_normal.render("PARAMÈTRES", True, COL_WHITE)
         surface.blit(ps, (bx + btn_w // 2 - ps.get_width() // 2,
-                          by + btn_h // 2 - ps.get_height() // 2))
-        if is_h and pygame.mouse.get_pressed()[0]:
-            return STATE_SETTINGS
+                          by_settings + btn_h // 2 - ps.get_height() // 2))
 
-        _center_text(surface, self._font_small, "Quitter : Alt+F4",
-                     COL_GREY, SCREEN_H // 2 + 112)
-        return None
+        # Bouton QUITTER dans la pause
+        by_quit = SCREEN_H // 2 + 92
+        is_h_quit = pygame.Rect(bx, by_quit, btn_w, btn_h).collidepoint(mx, my)
+        bg_quit = pygame.Surface((btn_w, btn_h), pygame.SRCALPHA)
+        bg_quit.fill((135, 40, 40, 210 if is_h_quit else 150))
+        surface.blit(bg_quit, (bx, by_quit))
+        pygame.draw.rect(surface, (185, 70, 70),
+                         (bx, by_quit, btn_w, btn_h), 2, border_radius=6)
+        qs = self._font_normal.render("QUITTER", True, COL_WHITE)
+        surface.blit(qs, (bx + btn_w // 2 - qs.get_width() // 2,
+                          by_quit + btn_h // 2 - qs.get_height() // 2))
+
+        # Consommer le résultat stocké par handle_pause_event()
+        result = self._pause_result
+        self._pause_result = None
+        return result
 
     # ------------------------------------------------------------------
     def draw_game_over(self, surface: pygame.Surface,

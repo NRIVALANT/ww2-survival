@@ -6,7 +6,7 @@ import socket
 
 from settings import (
     SCREEN_W, SCREEN_H, FPS, TITLE,
-    STATE_PLAYING, STATE_GAMEOVER, STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU,
+    STATE_PLAYING, STATE_PAUSED, STATE_GAMEOVER, STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU,
     PLAYER_SPEED, WEAPONS, WEAPON_ORDER, PLAYER_COLORS,
     NET_PORT, NET_BROADCAST_RATE,
     REVIVE_RANGE, REVIVE_TIME, DOWN_TIMEOUT,
@@ -67,6 +67,7 @@ class ServerGame:
 
         self._tick = 0
         self.state = STATE_PLAYING
+        self._settings_return_state = STATE_PLAYING   # d'où on vient quand on ouvre les paramètres
 
         # Splash "IP à donner aux clients" affiché en superposition pendant quelques secondes
         self._local_ip = local_ip
@@ -125,6 +126,7 @@ class ServerGame:
         """Boucle principale. Retourne normalement pour permettre le retour au menu."""
         # Déterminer si on possède pygame (lancement direct) ou si on partage (depuis main.py)
         owns_pygame = len(sys.argv) > 1   # True si lancé directement avec argument
+        self._quit_requested = False
         while True:
             dt = self.clock.tick(FPS) / 1000.0
             dt = min(dt, 0.05)
@@ -140,6 +142,15 @@ class ServerGame:
                         return   # Retour propre vers main.py
                 self._handle_local_event(event)
 
+            if self._quit_requested:
+                self.server.stop()
+                if owns_pygame:
+                    pygame.quit()
+                    sys.exit()
+                else:
+                    pygame.mouse.set_visible(True)
+                    return   # Retour propre vers main.py
+
             self._process_network_messages()
             self._update(dt)
             self._maybe_broadcast(dt)
@@ -151,6 +162,25 @@ class ServerGame:
         host = self.players.get(self.host_player_id)
         if not host:
             return
+
+        # Gestion du menu paramètres (ECHAP = retour depuis les paramètres)
+        if self.state == STATE_SETTINGS:
+            result = self.menus.handle_settings_event(event)
+            if result == "back":
+                self.state = self._settings_return_state
+            return
+
+        if event.type == pygame.KEYDOWN and event.key == KEYBINDS["pause"]:
+            if self.state == STATE_PLAYING:
+                self.state = STATE_PAUSED
+            elif self.state == STATE_PAUSED:
+                self.state = STATE_PLAYING
+            return
+
+        if self.state == STATE_PAUSED:
+            self.menus.handle_pause_event(event)
+            return
+
         if event.type == pygame.KEYDOWN and event.key == KEYBINDS["upgrade"]:
             if self.upgrade_machine.player_in_range(host):
                 msg = self.upgrade_machine.try_upgrade(host)
@@ -308,11 +338,7 @@ class ServerGame:
 
         # ---- Nettoyage ennemis ----
         for e in dead_enemies:
-            self.enemy_group.discard(e) if hasattr(self.enemy_group, 'discard') else None
-            if e in self.enemy_group:
-                self.enemy_group.remove(e)
-            if e in self.all_sprites:
-                self.all_sprites.remove(e)
+            e.kill()  # retire le sprite de tous ses groupes de maniere sure
 
         # ---- Vagues ----
         self.wave_manager.players = players_list
@@ -439,6 +465,13 @@ class ServerGame:
     def _draw(self):
         host = self.players.get(self.host_player_id)
 
+        if self.state == STATE_SETTINGS:
+            pygame.mouse.set_visible(True)
+            self.menus.draw_settings_menu(self.screen)
+            return
+
+        pygame.mouse.set_visible(self.state == STATE_PAUSED)
+
         if self.state == STATE_GAMEOVER:
             self.screen.fill((10, 5, 5))
             font = pygame.font.SysFont("Arial", 52, bold=True)
@@ -525,6 +558,15 @@ class ServerGame:
                                   splash_y + 12))
             self.screen.blit(t2, (splash_x + splash_w // 2 - t2.get_width() // 2,
                                   splash_y + 52))
+
+        # Menu pause en overlay
+        if self.state == STATE_PAUSED:
+            pause_result = self.menus.draw_pause(self.screen)
+            if pause_result == STATE_SETTINGS:
+                self._settings_return_state = STATE_PAUSED
+                self.state = STATE_SETTINGS
+            elif pause_result == "quit":
+                self._quit_requested = True
 
 
 # ------------------------------------------------------------------

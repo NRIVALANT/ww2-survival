@@ -9,7 +9,7 @@ from settings import (
     MAP_W, MAP_H, DOWN_TIMEOUT,
     COL_BULLET_P, COL_BULLET_E, COL_YELLOW, COL_WHITE, COL_GREY, COL_RED,
     UPGRADE_MACHINE_TILE, KEYBINDS, NET_PORT,
-    STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU, STATE_PLAYING,
+    STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU, STATE_PLAYING, STATE_PAUSED,
 )
 from game.entities.upgrade_machine import UpgradeMachine
 from game.world.tilemap   import TileMap
@@ -82,7 +82,9 @@ class ClientGame:
         self.wave_info: dict = {}
         self.local_state: dict = {}   # etat du joueur local
 
-        self.state = "playing"
+        self.state = STATE_PLAYING
+        self._settings_return_state = STATE_PLAYING
+        self._quit_requested = False
 
         self.hud   = HUD()
         self.menus = Menus()
@@ -120,14 +122,44 @@ class ClientGame:
                     else:
                         pygame.mouse.set_visible(True)
                         return
+            # Quitter si demandé depuis le menu pause
+            if getattr(self, "_quit_requested", False):
+                self.net.stop()
+                if self._owns_screen:
+                    pygame.quit()
+                    sys.exit()
+                else:
+                    pygame.mouse.set_visible(True)
+                    return
             self._update_camera()
-            self._send_input()
+            # N'envoyer les inputs que si le jeu n'est pas en pause
+            if self.state not in (STATE_PAUSED, STATE_SETTINGS):
+                self._send_input()
             self.upgrade_machine.update(dt)
             self._draw()
             pygame.display.flip()
 
     # ------------------------------------------------------------------
     def _handle_event(self, event):
+        # Gestion du menu paramètres (priorité haute)
+        if self.state == STATE_SETTINGS:
+            result = self.menus.handle_settings_event(event)
+            if result == "back":
+                self.state = self._settings_return_state
+            return
+
+        # Gestion de la pause
+        if event.type == pygame.KEYDOWN and event.key == KEYBINDS["pause"]:
+            if self.state == STATE_PLAYING:
+                self.state = STATE_PAUSED
+            elif self.state == STATE_PAUSED:
+                self.state = STATE_PLAYING
+            return
+
+        if self.state == STATE_PAUSED:
+            self.menus.handle_pause_event(event)
+            return
+
         if event.type == pygame.MOUSEWHEEL:
             self._local_weapon_idx = (self._local_weapon_idx - event.y) % len(WEAPON_ORDER)
         elif event.type == pygame.KEYDOWN:
@@ -147,7 +179,7 @@ class ClientGame:
             if t == MSG_GAME_STATE:
                 self._apply_state(msg)
             elif t == "game_over":
-                self.state = "gameover"
+                self.state = "gameover"   # état spécial non-settings, conservé en string
             elif t == "upgrade_result":
                 if msg.get("player_id") == self.player_id:
                     self.upgrade_machine._set_message(msg.get("message", ""))
@@ -233,6 +265,13 @@ class ClientGame:
 
     # ------------------------------------------------------------------
     def _draw(self):
+        if self.state == STATE_SETTINGS:
+            pygame.mouse.set_visible(True)
+            self.menus.draw_settings_menu(self.screen)
+            return
+
+        pygame.mouse.set_visible(self.state == STATE_PAUSED)
+
         if self.state == "gameover":
             self.screen.fill((10, 5, 5))
             font_big  = pygame.font.SysFont("Arial", 52, bold=True)
@@ -304,6 +343,16 @@ class ClientGame:
         # Indicateur connexion (en bas)
         net_txt = self._font_small.render("CLIENT connecte", True, (180, 220, 180))
         self.screen.blit(net_txt, (10, SCREEN_H - 20))
+
+        # Menu pause en overlay
+        if self.state == STATE_PAUSED:
+            pause_result = self.menus.draw_pause(self.screen)
+            if pause_result == STATE_SETTINGS:
+                self._settings_return_state = STATE_PAUSED
+                self.state = STATE_SETTINGS
+            elif pause_result == "quit":
+                self._quit_requested = True
+            return   # Pas de crosshair pendant la pause
 
         # Crosshair unifié (cache aussi le curseur système)
         HUD.draw_crosshair(self.screen)

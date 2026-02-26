@@ -145,6 +145,8 @@ class Game:
         elif self.state == STATE_PAUSED:
             if event.type == pygame.KEYDOWN and event.key == KEYBINDS["pause"]:
                 self.state = STATE_PLAYING
+            else:
+                self.menus.handle_pause_event(event)
 
         elif self.state == STATE_SETTINGS:
             result = self.menus.handle_settings_event(event)
@@ -324,6 +326,9 @@ class Game:
             if pause_result == STATE_SETTINGS:
                 self._settings_return_state = STATE_PAUSED
                 self.state = STATE_SETTINGS
+            elif pause_result == "quit":
+                self._init_game()
+                self.state = STATE_MENU
 
 
 # ------------------------------------------------------------------

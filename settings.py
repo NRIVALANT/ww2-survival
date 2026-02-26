@@ -155,10 +155,6 @@ PLAYER_COLORS = [
     (180,  60, 180),   # Joueur 4 - violet
 ]
 
-# --- Score ---
-POINTS_HIT     = 10    # points par balle qui touche
-COL_POINTS_POPUP = (255, 230, 60)
-
 # --- Systeme de points (style CoD Zombies) ---
 POINTS_HIT              = 10    # points gagnés par balle qui touche un ennemi
 POINTS_KILL_BASE        = 100   # points bonus pour tuer un ennemi (base)
@@ -172,12 +168,12 @@ COL_POINTS_POPUP     = (255, 220, 60)   # couleur des popups "+pts"
 # --- Raccourcis clavier (modifiables en jeu) ---
 import pygame as _pg
 KEYBINDS: dict = {
-    "move_up":    _pg.K_w,
+    "move_up":    _pg.K_z,
     "move_down":  _pg.K_s,
-    "move_left":  _pg.K_a,
+    "move_left":  _pg.K_q,
     "move_right": _pg.K_d,
     "reload":     _pg.K_r,
-    "weapon_prev": _pg.K_q,
+    "weapon_prev": _pg.K_TAB,
     "revive":     _pg.K_e,
     "upgrade":    _pg.K_f,
     "pause":      _pg.K_ESCAPE,
