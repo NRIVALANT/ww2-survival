@@ -8,7 +8,7 @@ from settings import (
     WEAPON_ORDER, WEAPONS, PLAYER_COLORS,
     MAP_W, MAP_H, DOWN_TIMEOUT,
     COL_BULLET_P, COL_BULLET_E, COL_YELLOW, COL_WHITE, COL_GREY, COL_RED,
-    UPGRADE_MACHINE_TILE, KEYBINDS,
+    UPGRADE_MACHINE_TILE, KEYBINDS, NET_PORT,
     STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU, STATE_PLAYING,
 )
 from game.entities.upgrade_machine import UpgradeMachine
@@ -36,24 +36,32 @@ class ClientGame:
         self._owns_screen = (screen is None)
         self.screen = screen if screen is not None else pygame.display.set_mode((SCREEN_W, SCREEN_H))
         self.clock  = pygame.time.Clock()
-        pygame.mouse.set_visible(False)
+        pygame.mouse.set_visible(False)   # caché en jeu
 
         self.player_name = player_name
         self.player_id   = None
         self._tick       = 0
         self._local_weapon_idx = 0
 
-        # Connexion
+        # Connexion — attendre le MSG_WELCOME avec timeout
         self.net = GameClient(server_ip, player_name)
         self.net.start_in_thread()
-        print(f"Connexion a {server_ip}...")
-        if not self.net.wait_connected(timeout=10.0):
-            print("Impossible de se connecter. Verifiez l'IP et le serveur.")
+        print(f"Connexion a {server_ip}:{NET_PORT}...")
+        connected = self.net.wait_connected(timeout=10.0)
+        if not connected or self.net.player_id is None:
+            # Essaie de récupérer un message d'erreur de la queue
+            reason = "timeout"
+            msgs = self.net.get_messages()
+            for m in msgs:
+                if m.get("type") == "error":
+                    reason = m.get("reason", "erreur inconnue")
+            err_msg = f"Connexion impossible à {server_ip} ({reason})"
+            print(err_msg)
             if self._owns_screen:
                 pygame.quit()
                 sys.exit(1)
             else:
-                raise RuntimeError(f"Connexion impossible \u00e0 {server_ip}")
+                raise RuntimeError(err_msg)
         self.player_id = self.net.player_id
         print(f"Connecte en tant que Joueur {self.player_id}")
 
@@ -91,11 +99,25 @@ class ClientGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.net.stop()
-                    pygame.quit()
-                    sys.exit()
+                    if self._owns_screen:
+                        pygame.quit()
+                        sys.exit()
+                    else:
+                        # Redonner la main à main.py proprement
+                        return
                 self._handle_event(event)
 
             self._process_server_messages()
+            # Quitter si game over et ESPACE/ECHAP appuyé
+            if self.state == "gameover":
+                keys = pygame.key.get_pressed()
+                if keys[pygame.K_SPACE] or keys[pygame.K_ESCAPE]:
+                    self.net.stop()
+                    if self._owns_screen:
+                        pygame.quit()
+                        sys.exit()
+                    else:
+                        return
             self._update_camera()
             self._send_input()
             self.upgrade_machine.update(dt)
@@ -211,9 +233,23 @@ class ClientGame:
     def _draw(self):
         if self.state == "gameover":
             self.screen.fill((10, 5, 5))
-            font = pygame.font.SysFont("Arial", 52, bold=True)
-            txt = font.render("MORT AU COMBAT", True, (220, 50, 50))
-            self.screen.blit(txt, (SCREEN_W//2 - txt.get_width()//2, SCREEN_H//2 - 60))
+            font_big  = pygame.font.SysFont("Arial", 52, bold=True)
+            font_sub  = pygame.font.SysFont("Arial", 26, bold=True)
+            font_hint = pygame.font.SysFont("Arial", 20)
+            txt = font_big.render("MORT AU COMBAT", True, (220, 50, 50))
+            self.screen.blit(txt, (SCREEN_W//2 - txt.get_width()//2, SCREEN_H//2 - 80))
+            # Scores finaux
+            y_s = SCREEN_H//2 - 10
+            for pdata in self.remote_players.values():
+                sc_txt = font_sub.render(
+                    f"{pdata.get('player_name','?')} : {pdata.get('score', 0):,} pts",
+                    True, (200, 200, 100))
+                self.screen.blit(sc_txt, (SCREEN_W//2 - sc_txt.get_width()//2, y_s))
+                y_s += 32
+            hint = font_hint.render("ESPACE ou ECHAP pour revenir au menu",
+                                    True, (160, 160, 160))
+            self.screen.blit(hint, (SCREEN_W//2 - hint.get_width()//2, SCREEN_H - 80))
+            pygame.display.flip()
             return
 
         self.screen.fill((80, 72, 55))

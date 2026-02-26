@@ -379,8 +379,8 @@ class Menus:
         Gère les événements du menu paramètres.
         Retourne "back" quand l'utilisateur veut revenir au menu principal.
         """
-        ROW_H   = 38
-        START_Y = 115
+        ROW_H   = 32
+        START_Y = 100   # = 82 (base) + 18 (hauteur en-tête) — doit correspondre à draw_settings_menu
         TABLE_X = SCREEN_W // 2 - 270
         TABLE_W = 540
 
@@ -443,7 +443,7 @@ class Menus:
         TABLE_X = SCREEN_W // 2 - 270
         KEY_X   = SCREEN_W // 2 + 80
         TABLE_W = 540
-        ROW_H   = 38
+        ROW_H   = 32
         START_Y = 82
         mx, my  = pygame.mouse.get_pos()
 
@@ -452,7 +452,7 @@ class Menus:
         hdr_k = self._font_small.render("TOUCHE", True, (80, 78, 65))
         surface.blit(hdr_a, (TABLE_X + 8, START_Y))
         surface.blit(hdr_k, (KEY_X + 8,   START_Y))
-        START_Y += 18
+        START_Y += 18   # START_Y est maintenant 100, cohérent avec handle_settings_event
 
         for i, (action, label) in enumerate(self._KEYBIND_ROWS):
             row_y    = START_Y + i * ROW_H
@@ -482,9 +482,8 @@ class Menus:
             # Libellé action
             l_col  = COL_WHITE if is_sel else COL_GREY
             l_surf = self._font_small.render(label, True, l_col)
-            surface.blit(l_surf,
-                         (TABLE_X + 8,
-                          row_y + (ROW_H - 2 - l_surf.get_height()) // 2))
+            cy = row_y + (ROW_H - 2 - l_surf.get_height()) // 2
+            surface.blit(l_surf, (TABLE_X + 8, cy))
 
             # Touche
             if is_sel and self._settings_waiting:
@@ -493,7 +492,7 @@ class Menus:
             else:
                 key_str = pygame.key.name(KEYBINDS.get(action, 0)).upper()
                 key_col = COL_YELLOW if is_sel else (160, 150, 110)
-            k_surf = self._font_normal.render(key_str, True, key_col)
+            k_surf = self._font_small.render(key_str, True, key_col)
             surface.blit(k_surf,
                          (KEY_X + 8,
                           row_y + (ROW_H - 2 - k_surf.get_height()) // 2))

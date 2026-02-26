@@ -118,6 +118,9 @@ class ServerGame:
 
     # ------------------------------------------------------------------
     def run(self):
+        """Boucle principale. Retourne normalement pour permettre le retour au menu."""
+        # Déterminer si on possède pygame (lancement direct) ou si on partage (depuis main.py)
+        owns_pygame = len(sys.argv) > 1   # True si lancé directement avec argument
         while True:
             dt = self.clock.tick(FPS) / 1000.0
             dt = min(dt, 0.05)
@@ -126,8 +129,11 @@ class ServerGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.server.stop()
-                    pygame.quit()
-                    sys.exit()
+                    if owns_pygame:
+                        pygame.quit()
+                        sys.exit()
+                    else:
+                        return   # Retour propre vers main.py
                 self._handle_local_event(event)
 
             self._process_network_messages()
@@ -498,7 +504,7 @@ def _pre_menu() -> tuple[str, pygame.Surface]:
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption(TITLE)
-    pygame.mouse.set_visible(False)
+    pygame.mouse.set_visible(True)   # curseur visible dans les menus
     clock  = pygame.time.Clock()
     menus  = Menus()
     # Pré-sélectionner l'option HÉBERGER dans le menu réseau
@@ -526,12 +532,18 @@ def _pre_menu() -> tuple[str, pygame.Surface]:
                 else:
                     result = menus.handle_net_event(event)
                     if result == NET_MENU_HOST:
+                        # Cacher le curseur avant de démarrer le jeu
+                        pygame.mouse.set_visible(False)
                         return menus.net_name or "Host", screen
 
             elif state == STATE_SETTINGS:
                 res = menus.handle_settings_event(event)
                 if res == "back":
                     state = settings_return
+
+        # ---- gestion curseur selon état ----
+        in_menu = state in (STATE_MENU, STATE_NETWORK_MENU, STATE_SETTINGS)
+        pygame.mouse.set_visible(in_menu)
 
         # ---- dessin ----
         if state == STATE_MENU:

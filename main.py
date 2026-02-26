@@ -29,7 +29,7 @@ class Game:
         pygame.display.set_caption(TITLE)
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         self.clock  = pygame.time.Clock()
-        pygame.mouse.set_visible(False)   # curseur personnalise
+        pygame.mouse.set_visible(True)   # visible dans les menus
 
         self.state      = STATE_MENU
         self._settings_return_state = STATE_MENU   # d'ou on vient quand on ouvre les paramètres
@@ -104,23 +104,33 @@ class Game:
                 self.state = STATE_PLAYING
             elif result == NET_MENU_HOST:
                 from main_server import ServerGame
+                pygame.mouse.set_visible(False)
                 ServerGame(
                     host_name=self.menus.net_name or "Host",
                     screen=self.screen,
                 ).run()
+                # ServerGame.run() ne retourne que si le serveur est fermé proprement
+                pygame.mouse.set_visible(True)
+                self.state = STATE_MENU
             elif result == NET_MENU_JOIN:
                 ip = self.menus.net_ip
                 if not ip:
-                    return   # pas d'IP saisie, on ignore
+                    self._net_error = "Veuillez saisir l'IP du serveur"
+                    return
                 from main_client import ClientGame
                 try:
+                    pygame.mouse.set_visible(False)
                     ClientGame(
                         server_ip=ip,
                         player_name=self.menus.net_name or "Joueur",
                         screen=self.screen,
                     ).run()
+                    # Retour propre : revenir au menu
+                    pygame.mouse.set_visible(True)
+                    self.state = STATE_MENU
                 except RuntimeError as e:
                     self._net_error = str(e)
+                    pygame.mouse.set_visible(True)
                     # Rester sur le menu réseau, l'erreur s'affiche dans _draw
 
         elif self.state == STATE_PLAYING:
@@ -221,6 +231,10 @@ class Game:
 
     # ------------------------------------------------------------------
     def _draw(self):
+        # Curseur : visible dans les menus, caché en jeu
+        in_menu = self.state in (STATE_MENU, STATE_NETWORK_MENU, STATE_SETTINGS)
+        pygame.mouse.set_visible(in_menu)
+
         if self.state == STATE_MENU:
             result = self.menus.draw_main_menu(self.screen)
             if result == STATE_PLAYING:
