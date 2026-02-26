@@ -2,6 +2,7 @@
 import pygame
 import sys
 import math
+import random
 import socket
 
 from settings import (
@@ -383,9 +384,6 @@ class ServerGame:
 
         aw = player.active_weapon
 
-        # Grenade
-        if inp.get("grenade_throw") and aw != "grenade":
-            pass  # Ignore si pas grenade selectionnee
         if inp.get("shooting") and not player.is_reloading:
             if aw == "grenade":
                 if player.fire_timer <= 0 and player.ammo.get("grenade", 0) > 0:
@@ -399,7 +397,7 @@ class ServerGame:
                     wdata  = player.get_weapon_data()
                     spread = wdata.get("spread", 0)
                     angle  = math.radians(player.facing_angle) + \
-                             math.radians(__import__("random").uniform(-spread, spread))
+                             math.radians(random.uniform(-spread, spread))
                     speed  = wdata["bullet_speed"]
                     Bullet(
                         player.pos.x, player.pos.y,

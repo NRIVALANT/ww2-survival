@@ -39,18 +39,17 @@ def make_join(player_name: str) -> dict:
 
 def make_input(player_id: int, tick: int, dx: float, dy: float,
                aim_angle: float, shooting: bool, weapon_idx: int,
-               grenade_throw: bool, revive_held: bool) -> dict:
+               revive_held: bool) -> dict:
     return {
-        "type":         MSG_INPUT,
-        "player_id":    player_id,
-        "tick":         tick,
-        "dx":           dx,
-        "dy":           dy,
-        "aim_angle":    round(aim_angle, 2),
-        "shooting":     shooting,
-        "weapon_idx":   weapon_idx,
-        "grenade_throw": grenade_throw,
-        "revive_held":  revive_held,
+        "type":        MSG_INPUT,
+        "player_id":   player_id,
+        "tick":        tick,
+        "dx":          dx,
+        "dy":          dy,
+        "aim_angle":   round(aim_angle, 2),
+        "shooting":    shooting,
+        "weapon_idx":  weapon_idx,
+        "revive_held": revive_held,
     }
 
 

@@ -85,6 +85,7 @@ class ClientGame:
         self.state = STATE_PLAYING
         self._settings_return_state = STATE_PLAYING
         self._quit_requested = False
+        self._reload_pressed = False
 
         self.hud   = HUD()
         self.menus = Menus()
@@ -229,20 +230,23 @@ class ClientGame:
         dy = (1 if keys[KEYBINDS["move_down"]]  else 0) - \
              (1 if keys[KEYBINDS["move_up"]]    else 0)
 
-        # Recharge
+        # Recharge : n'envoyer qu'une seule fois par pression (edge detection)
         if keys[KEYBINDS["reload"]]:
-            self.net.send_input({"type": "reload_req", "player_id": self.player_id})
+            if not self._reload_pressed:
+                self.net.send_input({"type": "reload_req", "player_id": self.player_id})
+                self._reload_pressed = True
+        else:
+            self._reload_pressed = False
 
         inp = make_input(
-            player_id    = self.player_id,
-            tick         = self._tick,
-            dx           = float(dx),
-            dy           = float(dy),
-            aim_angle    = aim_angle,
-            shooting     = bool(mbtns[0]),
-            weapon_idx   = self._local_weapon_idx,
-            grenade_throw= bool(mbtns[2]),
-            revive_held  = bool(keys[KEYBINDS["revive"]]),
+            player_id  = self.player_id,
+            tick       = self._tick,
+            dx         = float(dx),
+            dy         = float(dy),
+            aim_angle  = aim_angle,
+            shooting   = bool(mbtns[0]),
+            weapon_idx = self._local_weapon_idx,
+            revive_held= bool(keys[KEYBINDS["revive"]]),
         )
         self.net.send_input(inp)
 

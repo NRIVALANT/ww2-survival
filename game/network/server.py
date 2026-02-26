@@ -9,10 +9,12 @@ try:
 except ImportError:
     websockets = None
 
+import time
+
 from game.network.messages import (
     MSG_JOIN, MSG_WELCOME, MSG_ERROR, encode, decode
 )
-from settings import NET_PORT, NET_MAX_PLAYERS
+from settings import NET_PORT, NET_MAX_PLAYERS, NET_TIMEOUT
 
 
 class GameServer:
@@ -86,13 +88,28 @@ class GameServer:
                 "player_name": self.player_names[player_id],
             })
 
-            # Boucle de réception des inputs
-            async for raw_msg in websocket:
-                msg = decode(raw_msg)
-                self.input_queue.put({
-                    "player_id": player_id,
-                    "input":     msg,
-                })
+            # Boucle de réception des inputs avec timeout d'inactivité
+            last_recv = time.monotonic()
+            while True:
+                try:
+                    remaining = NET_TIMEOUT - (time.monotonic() - last_recv)
+                    if remaining <= 0:
+                        # Client silencieux depuis trop longtemps → déconnexion
+                        await websocket.close()
+                        break
+                    raw_msg = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+                    last_recv = time.monotonic()
+                    msg = decode(raw_msg)
+                    self.input_queue.put({
+                        "player_id": player_id,
+                        "input":     msg,
+                    })
+                except asyncio.TimeoutError:
+                    # Timeout atteint sans message → kick
+                    await websocket.close()
+                    break
+                except Exception:
+                    break
 
         except (Exception,):
             pass
