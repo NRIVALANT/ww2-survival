@@ -36,7 +36,7 @@ class ClientGame:
         self._owns_screen = (screen is None)
         self.screen = screen if screen is not None else pygame.display.set_mode((SCREEN_W, SCREEN_H))
         self.clock  = pygame.time.Clock()
-        pygame.mouse.set_visible(False)   # caché en jeu
+        pygame.mouse.set_visible(False)   # caché pendant le jeu (crosshair custom)
 
         self.player_name = player_name
         self.player_id   = None
@@ -104,6 +104,7 @@ class ClientGame:
                         sys.exit()
                     else:
                         # Redonner la main à main.py proprement
+                        pygame.mouse.set_visible(True)
                         return
                 self._handle_event(event)
 
@@ -117,6 +118,7 @@ class ClientGame:
                         pygame.quit()
                         sys.exit()
                     else:
+                        pygame.mouse.set_visible(True)
                         return
             self._update_camera()
             self._send_input()
@@ -548,7 +550,6 @@ class ClientGame:
                 rp = p.get("reload_progress", 0.0)
                 pygame.draw.rect(self.screen, (80, 80, 220),
                                  (sx, sy0 + slot_w - 4, int(slot_w * rp), 4))
-            y_off += 22
 
         # Rechargement
         if p.get("is_reloading"):
@@ -583,7 +584,7 @@ def _pre_menu() -> tuple[str, str, pygame.Surface]:
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption(TITLE)
-    pygame.mouse.set_visible(False)
+    pygame.mouse.set_visible(True)   # curseur visible dans les menus
     clock  = pygame.time.Clock()
     menus  = Menus()
     # Pré-sélectionner l'option REJOINDRE dans le menu réseau
@@ -657,7 +658,6 @@ if __name__ == "__main__":
         # Lancement direct avec IP en argument (ex: python main_client.py 192.168.1.X)
         pygame.init()
         screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-        pygame.mouse.set_visible(False)
         server_ip = sys.argv[1]
         name      = sys.argv[2] if len(sys.argv) > 2 else "Joueur"
     else:

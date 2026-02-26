@@ -135,7 +135,7 @@ class Menus:
             btn_w  = 320
             btn_h  = 52
             gap    = 16
-            base_y = 260
+            base_y = 230   # doit correspondre exactement à draw_network_menu
 
             options = [NET_MENU_HOST, NET_MENU_JOIN, NET_MENU_LOCAL]
             for i, _ in enumerate(options):
@@ -145,15 +145,17 @@ class Menus:
                     self._net_ip_active   = False
                     self._net_name_active = False
 
-            # Zone saisie IP
-            ip_rect = pygame.Rect(SCREEN_W // 2 - 140, base_y + 3 * (btn_h + gap) + 30,
-                                  280, 34)
+            # Zone saisie IP — calcul identique à draw_network_menu
+            # field_y = base_y + 3*(btn_h+gap) + 20  puis +22 pour le label
+            ip_y = base_y + 3 * (btn_h + gap) + 20 + 22
+            ip_rect = pygame.Rect(SCREEN_W // 2 - 140, ip_y, 280, 34)
             if ip_rect.collidepoint(mx, my):
                 self._net_ip_active   = True
                 self._net_name_active = False
 
-            # Zone saisie Nom
-            name_rect = pygame.Rect(SCREEN_W // 2 - 140, ip_rect.y + 60, 280, 34)
+            # Zone saisie Nom — +42 (hauteur champ IP) +22 (label Nom)
+            name_y = ip_y + 42 + 22
+            name_rect = pygame.Rect(SCREEN_W // 2 - 140, name_y, 280, 34)
             if name_rect.collidepoint(mx, my):
                 self._net_name_active = True
                 self._net_ip_active   = False

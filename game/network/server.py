@@ -35,6 +35,8 @@ class GameServer:
 
         # asyncio.Queue pour le broadcast (créée dans le thread asyncio)
         self._async_bcast_queue: asyncio.Queue | None = None
+        # Event signalant que la queue asyncio est prête (évite race condition)
+        self._queue_ready = threading.Event()
 
         self._running = False
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -122,8 +124,9 @@ class GameServer:
                 continue
 
     async def _run(self):
-        # Créer la asyncio.Queue dans le bon loop
+        # Créer la asyncio.Queue dans le bon loop, puis signaler qu'elle est prête
         self._async_bcast_queue = asyncio.Queue()
+        self._queue_ready.set()
         self._running = True
         broadcast_task = asyncio.create_task(self._broadcast_loop())
         async with ws_serve(self._handler, "0.0.0.0", NET_PORT) as server:
@@ -131,7 +134,10 @@ class GameServer:
             await asyncio.get_running_loop().create_future()
         broadcast_task.cancel()
 
-    def start_in_thread(self):
+    def start_in_thread(self, wait_ready: bool = True):
+        """Démarre le serveur dans un thread daemon.
+        Si wait_ready=True, attend que la asyncio.Queue soit initialisée (max 3s).
+        """
         def _thread_func():
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
@@ -142,6 +148,8 @@ class GameServer:
 
         self._thread = threading.Thread(target=_thread_func, daemon=True)
         self._thread.start()
+        if wait_ready:
+            self._queue_ready.wait(timeout=3.0)
 
     def stop(self):
         self._running = False
@@ -151,7 +159,7 @@ class GameServer:
     # ------------------------------------------------------------------
     def broadcast(self, msg_str: str):
         """Appelé depuis le thread pygame — broadcast event-driven sans polling."""
-        if self._loop and self._async_bcast_queue is not None:
+        if self._loop and self._loop.is_running() and self._async_bcast_queue is not None:
             self._loop.call_soon_threadsafe(self._async_bcast_queue.put_nowait, msg_str)
 
     def get_pending_inputs(self) -> list[dict]:
