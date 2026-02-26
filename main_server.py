@@ -179,6 +179,14 @@ class ServerGame:
                 inp = msg["input"]
                 if inp.get("type") == MSG_INPUT:
                     self.pending_inputs[pid] = inp
+                elif inp.get("type") == "reload_req":
+                    player = self.players.get(pid)
+                    if player and player.state == "alive" and not player.is_reloading:
+                        wdata = player.get_weapon_data()
+                        aw = player.active_weapon
+                        if player.ammo.get(aw, 0) < wdata.get("max_ammo", 1):
+                            player.is_reloading = True
+                            player.reload_timer = wdata.get("reload_time", 1.5)
                 elif inp.get("type") == "upgrade_req":
                     player = self.players.get(pid)
                     if player and self.upgrade_machine.player_in_range(player):

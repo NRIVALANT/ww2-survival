@@ -354,31 +354,134 @@ class ClientGame:
         """HUD reconstruit depuis le dict d'etat serveur."""
         p = self.local_state
 
+        # ── Panneau joueur local en haut à gauche ──────────────────────
+        panel_x = 12
+        panel_y = 30   # laisser place a l'indicateur "CLIENT connecte"
+        panel_w = 220
+        panel_h = 68
+
+        # Fond semi-transparent
+        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        bg.fill((10, 10, 10, 180))
+        self.screen.blit(bg, (panel_x, panel_y))
+        pygame.draw.rect(self.screen, PLAYER_COLORS[(self.player_id - 1) % len(PLAYER_COLORS)],
+                         (panel_x, panel_y, panel_w, panel_h), 2, border_radius=3)
+
+        # Nom + score sur la même ligne
+        pname  = p.get("player_name", f"P{self.player_id}")
+        score  = p.get("score", 0)
+        color  = PLAYER_COLORS[(self.player_id - 1) % len(PLAYER_COLORS)]
+        name_surf  = self._font_small.render(pname, True, color)
+        score_surf = self._font_small.render(f"{score:,} pts", True, COL_YELLOW)
+        self.screen.blit(name_surf,  (panel_x + 6, panel_y + 5))
+        self.screen.blit(score_surf, (panel_x + panel_w - score_surf.get_width() - 6,
+                                      panel_y + 5))
+
         # Barre de vie
         hp    = p.get("hp", 100)
         maxhp = p.get("max_hp", 100)
-        bar_w, bar_h = 200, 20
-        bx, by = 20, SCREEN_H - 50
-        pygame.draw.rect(self.screen, (30, 30, 30), (bx, by, bar_w, bar_h), border_radius=3)
+        bar_w, bar_h = panel_w - 12, 16
+        bx, by = panel_x + 6, panel_y + 26
+        pygame.draw.rect(self.screen, (40, 40, 40), (bx, by, bar_w, bar_h), border_radius=3)
         ratio = hp / max(1, maxhp)
         col = (50, 200, 50) if ratio > 0.4 else (220, 50, 50)
-        pygame.draw.rect(self.screen, col, (bx, by, int(bar_w*ratio), bar_h), border_radius=3)
+        pygame.draw.rect(self.screen, col, (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
         pygame.draw.rect(self.screen, COL_WHITE, (bx, by, bar_w, bar_h), 1, border_radius=3)
         hp_txt = self._font_small.render(f"HP  {hp}/{maxhp}", True, COL_WHITE)
-        self.screen.blit(hp_txt, (bx, by - 16))
+        self.screen.blit(hp_txt, (bx + bar_w // 2 - hp_txt.get_width() // 2, by + 1))
 
-        # Score
-        score_txt = self._font_med.render(f"SCORE  {p.get('score', 0):,}", True, COL_WHITE)
-        self.screen.blit(score_txt, (SCREEN_W//2 - score_txt.get_width()//2, 10))
+        # Indicateur rechargement
+        is_reloading = p.get("is_reloading", False)
+        reload_prog  = p.get("reload_progress", 0.0)
+        if is_reloading:
+            rw = int(bar_w * reload_prog)
+            pygame.draw.rect(self.screen, (80, 80, 220),
+                             (bx, by + bar_h + 2, rw, 4), border_radius=2)
+            rl_txt = self._font_small.render("RECHARGEMENT...", True, (130, 160, 255))
+            self.screen.blit(rl_txt, (bx, by + bar_h + 8))
 
-        # Vague
+        # ── Alliés en dessous du panneau local ─────────────────────────
+        others = [pdata for pid, pdata in self.remote_players.items()
+                  if pid != self.player_id]
+        ally_y = panel_y + panel_h + 6
+        ally_w = panel_w
+        ally_h = 44
+
+        for pdata in others:
+            pid2   = pdata["player_id"]
+            name2  = pdata.get("player_name", f"P{pid2}")
+            hp2    = pdata.get("hp", 100)
+            maxhp2 = pdata.get("max_hp", 100)
+            state2 = pdata.get("state", "alive")
+            score2 = pdata.get("score", 0)
+            acolor = PLAYER_COLORS[(pid2 - 1) % len(PLAYER_COLORS)]
+
+            # Fond
+            abg = pygame.Surface((ally_w, ally_h), pygame.SRCALPHA)
+            if state2 == "down":
+                abg.fill((100, 30, 30, 160))
+            elif state2 == "dead":
+                abg.fill((40, 40, 40, 160))
+            else:
+                abg.fill((10, 10, 10, 160))
+            self.screen.blit(abg, (panel_x, ally_y))
+            pygame.draw.rect(self.screen, acolor,
+                             (panel_x, ally_y, ally_w, ally_h), 2, border_radius=3)
+
+            # Nom + score
+            n2_surf = self._font_small.render(name2, True, acolor)
+            s2_surf = self._font_small.render(f"{score2:,} pts", True, COL_YELLOW)
+            self.screen.blit(n2_surf, (panel_x + 6, ally_y + 4))
+            self.screen.blit(s2_surf, (panel_x + ally_w - s2_surf.get_width() - 6,
+                                       ally_y + 4))
+
+            # Barre HP / état
+            abx = panel_x + 6
+            aby = ally_y + 22
+            abw = ally_w - 12
+            pygame.draw.rect(self.screen, (40, 40, 40), (abx, aby, abw, 12), border_radius=3)
+            if state2 == "alive":
+                r2 = max(0.0, hp2 / max(1, maxhp2))
+                gc = (50, 200, 50) if r2 > 0.4 else (220, 50, 50)
+                pygame.draw.rect(self.screen, gc, (abx, aby, int(abw * r2), 12), border_radius=3)
+                pygame.draw.rect(self.screen, COL_WHITE, (abx, aby, abw, 12), 1, border_radius=3)
+                h2t = self._font_small.render(f"HP {hp2}/{maxhp2}", True, COL_WHITE)
+                self.screen.blit(h2t, (abx + abw//2 - h2t.get_width()//2, aby))
+            elif state2 == "down":
+                dt2 = pdata.get("down_timer", 0)
+                r2  = dt2 / max(1, DOWN_TIMEOUT)
+                pygame.draw.rect(self.screen, (220, 140, 30),
+                                 (abx, aby, int(abw * r2), 12), border_radius=3)
+                pygame.draw.rect(self.screen, COL_WHITE, (abx, aby, abw, 12), 1, border_radius=3)
+                dt_t = self._font_small.render(f"A TERRE  {int(dt2)+1}s", True, (255, 200, 80))
+                self.screen.blit(dt_t, (abx + abw//2 - dt_t.get_width()//2, aby))
+            elif state2 == "dead":
+                pygame.draw.rect(self.screen, COL_WHITE, (abx, aby, abw, 12), 1, border_radius=3)
+                dead_t = self._font_small.render("MORT", True, COL_GREY)
+                self.screen.blit(dead_t, (abx + abw//2 - dead_t.get_width()//2, aby))
+
+            ally_y += ally_h + 4
+
+        # ── Score centré en haut ───────────────────────────────────────
+        score_big = self._font_med.render(f"SCORE  {score:,}", True, COL_WHITE)
+        self.screen.blit(score_big, (SCREEN_W//2 - score_big.get_width()//2, 10))
+
+        # ── Vague en haut à droite ─────────────────────────────────────
         wn   = self.wave_info.get("wave_number", 0)
         wrem = self.wave_info.get("enemies_remaining", 0)
-        wave_txt = self._font_med.render(f"VAGUE  {wn}  |  Ennemis: {wrem}", True, COL_YELLOW)
-        self.screen.blit(wave_txt, (SCREEN_W - wave_txt.get_width() - 20, 20))
+        wst  = self.wave_info.get("wave_state", "")
+        wcd  = self.wave_info.get("wave_countdown", 0)
+        wave_txt = self._font_med.render(f"VAGUE  {wn}", True, COL_YELLOW)
+        self.screen.blit(wave_txt, (SCREEN_W - wave_txt.get_width() - 20, 10))
+        if wst in ("active", "spawning"):
+            rem_txt = self._font_small.render(f"Ennemis: {wrem}", True, COL_GREY)
+            self.screen.blit(rem_txt, (SCREEN_W - rem_txt.get_width() - 20, 36))
+        elif wst in ("clear", "waiting"):
+            cd_txt = self._font_small.render(f"Prochaine vague: {int(wcd)+1}s", True, (100, 220, 100))
+            self.screen.blit(cd_txt, (SCREEN_W - cd_txt.get_width() - 20, 36))
 
-        # Inventaire simplifie
-        ammo  = p.get("ammo", {})
+        # ── Inventaire en bas au centre ────────────────────────────────
+        ammo   = p.get("ammo", {})
         aw_idx = p.get("weapon_idx", 0)
         slot_w = 60
         total_w = len(WEAPON_ORDER) * (slot_w + 6) - 6
@@ -387,9 +490,9 @@ class ClientGame:
         for i, wn2 in enumerate(WEAPON_ORDER):
             sx = sx0 + i * (slot_w + 6)
             is_active = (i == aw_idx)
-            bg = (60, 55, 40) if is_active else (30, 28, 22)
+            bg2 = (60, 55, 40) if is_active else (30, 28, 22)
             border = COL_YELLOW if is_active else (60, 60, 60)
-            pygame.draw.rect(self.screen, bg, (sx, sy0, slot_w, slot_w), border_radius=4)
+            pygame.draw.rect(self.screen, bg2, (sx, sy0, slot_w, slot_w), border_radius=4)
             pygame.draw.rect(self.screen, border, (sx, sy0, slot_w, slot_w),
                              2 if is_active else 1, border_radius=4)
             n_surf = self._font_small.render(wn2.upper(), True,
@@ -401,33 +504,11 @@ class ClientGame:
             a_surf = self._font_small.render(f"{cur}/{mx2}", True, col2)
             self.screen.blit(a_surf, (sx + slot_w//2 - a_surf.get_width()//2,
                                       sy0 + slot_w - 18))
-
-        # Alliés HUD
-        others = [pdata for pid, pdata in self.remote_players.items()
-                  if pid != self.player_id]
-        y_off = 80
-        for pdata in others:
-            pid2   = pdata["player_id"]
-            name2  = pdata.get("player_name", f"P{pid2}")
-            hp2    = pdata.get("hp", 100)
-            maxhp2 = pdata.get("max_hp", 100)
-            state2 = pdata.get("state", "alive")
-            bw = 120
-            bx2, by2 = 20, y_off
-            pygame.draw.rect(self.screen, (30, 30, 30), (bx2, by2, bw, 12))
-            if state2 == "alive":
-                r2 = hp2 / max(1, maxhp2)
-                gc = (50, 200, 50) if r2 > 0.4 else (220, 50, 50)
-                pygame.draw.rect(self.screen, gc, (bx2, by2, int(bw*r2), 12))
-            elif state2 == "down":
-                dt2 = pdata.get("down_timer", 0)
-                r2  = dt2 / DOWN_TIMEOUT
-                pygame.draw.rect(self.screen, (220, 140, 30),
-                                 (bx2, by2, int(bw*r2), 12))
-            pygame.draw.rect(self.screen, (100, 100, 100), (bx2, by2, bw, 12), 1)
-            n2 = self._font_small.render(f"{name2} {'[A TERRE]' if state2=='down' else ''}",
-                                         True, (200, 200, 200))
-            self.screen.blit(n2, (bx2 + bw + 6, by2))
+            # Barre de rechargement sur le slot actif
+            if is_active and p.get("is_reloading"):
+                rp = p.get("reload_progress", 0.0)
+                pygame.draw.rect(self.screen, (80, 80, 220),
+                                 (sx, sy0 + slot_w - 4, int(slot_w * rp), 4))
             y_off += 22
 
         # Rechargement

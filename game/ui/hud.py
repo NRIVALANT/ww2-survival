@@ -4,7 +4,7 @@ from settings import (
     SCREEN_W, SCREEN_H, WEAPON_ORDER, WEAPONS,
     COL_HUD_BG, COL_HP_BAR, COL_HP_LOW, COL_WHITE, COL_BLACK,
     COL_YELLOW, COL_GREY, COL_DARK_GREY, COL_RED, COL_DARK_GREEN,
-    COL_POINTS_POPUP, REVIVE_TIME, DOWN_TIMEOUT,
+    COL_POINTS_POPUP, REVIVE_TIME, DOWN_TIMEOUT, PLAYER_COLORS,
 )
 
 
@@ -15,9 +15,8 @@ class HUD:
         self._font_small = pygame.font.SysFont("Arial", 14)
 
     def draw(self, surface: pygame.Surface, player, wave_manager):
-        self._draw_health(surface, player)
+        self._draw_player_panel(surface, player)
         self._draw_wave_info(surface, wave_manager)
-        self._draw_score(surface, player)
         self._draw_inventory(surface, player)
         self._draw_crosshair(surface)
         if player.is_reloading:
@@ -40,31 +39,50 @@ class HUD:
             surface.blit(surf, (int(sx) - surf.get_width() // 2, int(sy)))
 
     # ------------------------------------------------------------------
-    def _draw_health(self, surface: pygame.Surface, player):
+    def _draw_player_panel(self, surface: pygame.Surface, player):
+        """Panneau haut-gauche : nom, score, barre HP."""
+        panel_x = 12
+        panel_y = 30
+        panel_w = 220
+        panel_h = 68
+
         # Fond semi-transparent
-        bar_w, bar_h = 200, 20
-        bx, by = 20, SCREEN_H - 50
-        bg_surf = pygame.Surface((bar_w + 60, bar_h + 10), pygame.SRCALPHA)
-        bg_surf.fill((*COL_HUD_BG, 160))
-        surface.blit(bg_surf, (bx - 5, by - 5))
+        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        bg.fill((*COL_HUD_BG, 160))
+        surface.blit(bg, (panel_x, panel_y))
+        pid   = getattr(player, "player_id", 1)
+        color = PLAYER_COLORS[(pid - 1) % len(PLAYER_COLORS)]
+        pygame.draw.rect(surface, color,
+                         (panel_x, panel_y, panel_w, panel_h), 2, border_radius=3)
 
-        # Texte HP
-        label = self._font_med.render("HP", True, COL_WHITE)
-        surface.blit(label, (bx, by - 18))
+        # Nom + score
+        pname      = getattr(player, "player_name", "Host")
+        score      = getattr(player, "score", 0)
+        name_surf  = self._font_small.render(pname, True, color)
+        score_surf = self._font_small.render(f"{score:,} pts", True, COL_YELLOW)
+        surface.blit(name_surf,  (panel_x + 6, panel_y + 5))
+        surface.blit(score_surf, (panel_x + panel_w - score_surf.get_width() - 6,
+                                  panel_y + 5))
 
-        # Barre fond
+        # Barre HP
+        bar_w, bar_h = panel_w - 12, 16
+        bx, by = panel_x + 6, panel_y + 26
         pygame.draw.rect(surface, COL_DARK_GREY, (bx, by, bar_w, bar_h), border_radius=3)
-
-        # Barre vie
-        ratio = player.hp / player.max_hp
+        ratio = player.hp / max(1, player.max_hp)
         col = COL_HP_BAR if ratio > 0.4 else COL_HP_LOW
         pygame.draw.rect(surface, col,
                          (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
         pygame.draw.rect(surface, COL_WHITE, (bx, by, bar_w, bar_h), 1, border_radius=3)
+        hp_txt = self._font_small.render(f"HP  {player.hp}/{player.max_hp}", True, COL_WHITE)
+        surface.blit(hp_txt, (bx + bar_w // 2 - hp_txt.get_width() // 2, by + 1))
 
-        # Valeur numerique
-        hp_txt = self._font_small.render(f"{player.hp}/{player.max_hp}", True, COL_WHITE)
-        surface.blit(hp_txt, (bx + bar_w + 6, by + 3))
+        # Score centré en haut
+        score_big = self._font_big.render(f"SCORE  {score:,}", True, COL_WHITE)
+        surface.blit(score_big, (SCREEN_W // 2 - score_big.get_width() // 2, 10))
+
+    def _draw_health(self, surface: pygame.Surface, player):
+        """Compatibilite - appeler _draw_player_panel a la place."""
+        self._draw_player_panel(surface, player)
 
     def _draw_wave_info(self, surface: pygame.Surface, wave_manager):
         # Vague actuelle
@@ -87,8 +105,8 @@ class HUD:
             surface.blit(cd_txt, (SCREEN_W - cd_txt.get_width() - 20, 52))
 
     def _draw_score(self, surface: pygame.Surface, player):
-        score_txt = self._font_big.render(f"SCORE  {player.score:,}", True, COL_WHITE)
-        surface.blit(score_txt, (SCREEN_W // 2 - score_txt.get_width() // 2, 10))
+        """Compatibilite - le score est desormais dans _draw_player_panel."""
+        pass
 
     def _draw_inventory(self, surface: pygame.Surface, player):
         slot_w, slot_h = 64, 64
