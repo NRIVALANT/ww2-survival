@@ -135,3 +135,13 @@ STATE_PLAYING  = "playing"
 STATE_PAUSED   = "paused"
 STATE_GAMEOVER = "gameover"
 STATE_WAVE_CLEAR = "wave_clear"
+
+# --- Systeme de points (style CoD Zombies) ---
+POINTS_HIT              = 10    # points gagnés par balle qui touche un ennemi
+POINTS_KILL_BASE        = 100   # points bonus pour tuer un ennemi (base)
+UPGRADE_MACHINE_COST    = 5000  # coût pour améliorer une arme
+UPGRADE_MACHINE_MAX_LVL = 3     # nombre max d'améliorations par arme
+UPGRADE_MACHINE_TILE    = (19, 17)  # position tuile de la machine (col, row)
+
+COL_UPGRADE_MACHINE  = (80, 180, 255)   # couleur de la machine
+COL_POINTS_POPUP     = (255, 220, 60)   # couleur des popups "+pts"

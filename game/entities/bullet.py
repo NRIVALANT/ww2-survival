@@ -1,7 +1,7 @@
 # bullet.py - Projectiles du joueur et des ennemis
 import pygame
 import math
-from settings import TILE_SIZE, COL_BULLET_P, COL_BULLET_E, SUPPRESSION_DIST
+from settings import TILE_SIZE, COL_BULLET_P, COL_BULLET_E, SUPPRESSION_DIST, POINTS_HIT
 
 
 def _make_bullet_surf(color: tuple, length: int = 8, width: int = 3) -> pygame.Surface:
@@ -53,6 +53,10 @@ class Bullet(pygame.sprite.Sprite):
             for enemy in enemy_group:
                 if self.rect.colliderect(enemy.rect):
                     enemy.take_damage(self.damage)
+                    # +10 pts pour chaque balle qui touche
+                    if player:
+                        player.add_score(POINTS_HIT)
+                        player.add_score_popup(f"+{POINTS_HIT}", self.pos)
                     # Marquer suppression pour les ennemis proches
                     for e in enemy_group:
                         if e != enemy:

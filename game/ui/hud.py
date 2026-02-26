@@ -4,6 +4,7 @@ from settings import (
     SCREEN_W, SCREEN_H, WEAPON_ORDER, WEAPONS,
     COL_HUD_BG, COL_HP_BAR, COL_HP_LOW, COL_WHITE, COL_BLACK,
     COL_YELLOW, COL_GREY, COL_DARK_GREY, COL_RED, COL_DARK_GREEN,
+    COL_POINTS_POPUP,
 )
 
 
@@ -21,6 +22,22 @@ class HUD:
         self._draw_crosshair(surface)
         if player.is_reloading:
             self._draw_reload_text(surface)
+
+    def draw_score_popups(self, surface: pygame.Surface, player, camera):
+        """Dessine les popups de points flottants (+10, +100, etc.)."""
+        for popup in player.score_popups:
+            # Convertir position monde → écran
+            sx, sy = camera.apply_pos(popup["x"], popup["y"])
+            # Remonter au fil du temps
+            elapsed = 1.0 - popup["timer"]   # 0..1
+            sy -= elapsed * 50               # monte de 50px
+            # Fondu sortant
+            alpha = int(min(255, popup["timer"] / 0.4 * 255))
+            # Couleur selon contenu (négatif = rouge, positif = jaune)
+            col = (220, 80, 60) if popup["text"].startswith("-") else COL_POINTS_POPUP
+            surf = self._font_med.render(popup["text"], True, col)
+            surf.set_alpha(alpha)
+            surface.blit(surf, (int(sx) - surf.get_width() // 2, int(sy)))
 
     # ------------------------------------------------------------------
     def _draw_health(self, surface: pygame.Surface, player):
