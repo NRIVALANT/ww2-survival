@@ -100,6 +100,8 @@ class GameServer:
                     raw_msg = await asyncio.wait_for(websocket.recv(), timeout=remaining)
                     last_recv = time.monotonic()
                     msg = decode(raw_msg)
+                    if msg.get("type") == "ping":
+                        continue   # renouveler last_recv, ne pas mettre dans la queue
                     self.input_queue.put({
                         "player_id": player_id,
                         "input":     msg,

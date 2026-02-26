@@ -187,3 +187,4 @@ KEYBINDS_DEFAULT: dict = dict(KEYBINDS)  # copie pour reset
 # --- Etats supplementaires ---
 STATE_SETTINGS     = "settings"
 STATE_NETWORK_MENU = "network_menu"
+STATE_LOBBY        = "lobby"

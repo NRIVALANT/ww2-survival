@@ -6,10 +6,11 @@ import math
 from settings import (
     SCREEN_W, SCREEN_H, FPS, TITLE,
     WEAPON_ORDER, WEAPONS, PLAYER_COLORS,
-    MAP_W, MAP_H, DOWN_TIMEOUT,
+    DOWN_TIMEOUT,
     COL_BULLET_P, COL_BULLET_E, COL_YELLOW, COL_WHITE, COL_GREY, COL_RED,
     UPGRADE_MACHINE_TILE, KEYBINDS, NET_PORT,
-    STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU, STATE_PLAYING, STATE_PAUSED,
+    STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU, STATE_PLAYING,
+    STATE_PAUSED, STATE_GAMEOVER, STATE_LOBBY,
 )
 from game.entities.upgrade_machine import UpgradeMachine
 from game.world.tilemap   import TileMap
@@ -18,7 +19,9 @@ from game.world.map_data  import MAP_DATA
 from game.ui.hud   import HUD
 from game.ui.menus import Menus
 from game.network.client   import GameClient
-from game.network.messages import MSG_INPUT, MSG_GAME_STATE, make_input
+from game.network.messages import (
+    MSG_INPUT, MSG_GAME_STATE, MSG_LOBBY_STATE, MSG_START_GAME, make_input,
+)
 
 
 class ClientGame:
@@ -49,12 +52,16 @@ class ClientGame:
         print(f"Connexion a {server_ip}:{NET_PORT}...")
         connected = self.net.wait_connected(timeout=10.0)
         if not connected or self.net.player_id is None:
-            # Essaie de récupérer un message d'erreur de la queue
+            # Récupérer la raison depuis la queue
             reason = "timeout"
             msgs = self.net.get_messages()
             for m in msgs:
                 if m.get("type") == "error":
-                    reason = m.get("reason", "erreur inconnue")
+                    r = m.get("reason", "")
+                    if r == "server_full":
+                        reason = "serveur plein"
+                    elif r:
+                        reason = r
             err_msg = f"Connexion impossible à {server_ip} ({reason})"
             print(err_msg)
             if self._owns_screen:
@@ -82,10 +89,20 @@ class ClientGame:
         self.wave_info: dict = {}
         self.local_state: dict = {}   # etat du joueur local
 
-        self.state = STATE_PLAYING
+        self.state = STATE_LOBBY
         self._settings_return_state = STATE_PLAYING
         self._quit_requested = False
         self._reload_pressed = False
+        self._heartbeat_timer = 0.0
+
+        # Lobby : liste des joueurs en attente
+        self._lobby_players: list[dict] = [
+            {"player_id": self.player_id, "player_name": player_name, "is_host": False}
+        ]
+
+        # Données conservées pour l'écran game over
+        self._gameover_scores: list[dict] = []
+        self._gameover_wave: int = 0
 
         self.hud   = HUD()
         self.menus = Menus()
@@ -93,7 +110,11 @@ class ClientGame:
         self._font_med   = pygame.font.SysFont("Arial", 18, bold=True)
 
     # ------------------------------------------------------------------
-    def run(self):
+    def run(self, owns_pygame: bool = False):
+        """Boucle principale.
+        owns_pygame=True  -> lancé directement (__main__), sys.exit() à la fin.
+        owns_pygame=False -> appelé depuis main.py ou _pre_menu, on fait return.
+        """
         while True:
             dt = self.clock.tick(FPS) / 1000.0
             dt = min(dt, 0.05)
@@ -102,51 +123,53 @@ class ClientGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.net.stop()
-                    if self._owns_screen:
+                    if owns_pygame:
                         pygame.quit()
                         sys.exit()
                     else:
-                        # Redonner la main à main.py proprement
                         pygame.mouse.set_visible(True)
                         return
                 self._handle_event(event)
 
             self._process_server_messages()
-            # Quitter si game over et ESPACE/ECHAP appuyé
-            if self.state == "gameover":
-                keys = pygame.key.get_pressed()
-                if keys[pygame.K_SPACE] or keys[pygame.K_ESCAPE]:
-                    self.net.stop()
-                    if self._owns_screen:
-                        pygame.quit()
-                        sys.exit()
-                    else:
-                        pygame.mouse.set_visible(True)
-                        return
-            # Quitter si demandé depuis le menu pause
+            # Quitter si demandé (game over retour menu ou menu pause)
             if getattr(self, "_quit_requested", False):
                 self.net.stop()
-                if self._owns_screen:
+                if owns_pygame:
                     pygame.quit()
                     sys.exit()
                 else:
                     pygame.mouse.set_visible(True)
                     return
             self._update_camera()
-            # N'envoyer les inputs que si le jeu n'est pas en pause
-            if self.state not in (STATE_PAUSED, STATE_SETTINGS):
+            # N'envoyer les inputs que pendant le jeu actif
+            if self.state not in (STATE_PAUSED, STATE_SETTINGS, STATE_LOBBY):
                 self._send_input()
             self.upgrade_machine.update(dt)
+            # Heartbeat : garder la connexion active même en pause
+            self._heartbeat_timer += dt
+            if self._heartbeat_timer >= 5.0:
+                self._heartbeat_timer = 0.0
+                self.net.send_input({"type": "ping"})
             self._draw()
             pygame.display.flip()
 
     # ------------------------------------------------------------------
     def _handle_event(self, event):
+        # Lobby : pas d'action côté client (l'hôte lance)
+        if self.state == STATE_LOBBY:
+            return
+
         # Gestion du menu paramètres (priorité haute)
         if self.state == STATE_SETTINGS:
             result = self.menus.handle_settings_event(event)
             if result == "back":
                 self.state = self._settings_return_state
+            return
+
+        # Gestion du game over
+        if self.state == STATE_GAMEOVER:
+            self.menus.handle_gameover_event(event)
             return
 
         # Gestion de la pause
@@ -177,15 +200,30 @@ class ClientGame:
     def _process_server_messages(self):
         for msg in self.net.get_messages():
             t = msg.get("type")
-            if t == MSG_GAME_STATE:
+            if t == MSG_LOBBY_STATE:
+                self._lobby_players = msg.get("players", self._lobby_players)
+            elif t == MSG_START_GAME:
+                self.state = STATE_PLAYING
+                pygame.mouse.set_visible(False)
+            elif t == MSG_GAME_STATE:
                 self._apply_state(msg)
             elif t == "game_over":
-                self.state = "gameover"   # état spécial non-settings, conservé en string
+                self.state = STATE_GAMEOVER
+                self._gameover_wave = msg.get("wave_reached", 0)
+                self._gameover_scores = sorted(
+                    [{"player_name": p.get("player_name", "?"), "score": p.get("score", 0)}
+                     for p in msg.get("scores", [])],
+                    key=lambda x: x["score"], reverse=True
+                )
             elif t == "upgrade_result":
                 if msg.get("player_id") == self.player_id:
                     self.upgrade_machine._set_message(msg.get("message", ""))
             elif t == "error":
-                print(f"Erreur serveur : {msg.get('reason')}")
+                reason = msg.get("reason", "erreur inconnue")
+                print(f"Erreur réseau : {reason}")
+                if reason == "disconnected_by_server":
+                    # Retourner au menu proprement
+                    self._quit_requested = True
 
     def _apply_state(self, state: dict):
         self.remote_players  = {p["player_id"]: p for p in state.get("players", [])}
@@ -269,6 +307,17 @@ class ClientGame:
 
     # ------------------------------------------------------------------
     def _draw(self):
+        # ---- Lobby ----
+        if self.state == STATE_LOBBY:
+            pygame.mouse.set_visible(True)
+            self.menus.draw_lobby(
+                self.screen,
+                players=self._lobby_players,
+                local_player_id=self.player_id,
+                is_host=False,
+            )
+            return
+
         if self.state == STATE_SETTINGS:
             pygame.mouse.set_visible(True)
             self.menus.draw_settings_menu(self.screen)
@@ -276,25 +325,16 @@ class ClientGame:
 
         pygame.mouse.set_visible(self.state == STATE_PAUSED)
 
-        if self.state == "gameover":
-            self.screen.fill((10, 5, 5))
-            font_big  = pygame.font.SysFont("Arial", 52, bold=True)
-            font_sub  = pygame.font.SysFont("Arial", 26, bold=True)
-            font_hint = pygame.font.SysFont("Arial", 20)
-            txt = font_big.render("MORT AU COMBAT", True, (220, 50, 50))
-            self.screen.blit(txt, (SCREEN_W//2 - txt.get_width()//2, SCREEN_H//2 - 80))
-            # Scores finaux
-            y_s = SCREEN_H//2 - 10
-            for pdata in self.remote_players.values():
-                sc_txt = font_sub.render(
-                    f"{pdata.get('player_name','?')} : {pdata.get('score', 0):,} pts",
-                    True, (200, 200, 100))
-                self.screen.blit(sc_txt, (SCREEN_W//2 - sc_txt.get_width()//2, y_s))
-                y_s += 32
-            hint = font_hint.render("ESPACE ou ECHAP pour revenir au menu",
-                                    True, (160, 160, 160))
-            self.screen.blit(hint, (SCREEN_W//2 - hint.get_width()//2, SCREEN_H - 80))
-            pygame.display.flip()
+        if self.state == STATE_GAMEOVER:
+            pygame.mouse.set_visible(True)
+            result = self.menus.draw_game_over(
+                self.screen,
+                int(self.local_state.get("score", 0)),
+                self._gameover_wave,
+                all_scores=self._gameover_scores,
+            )
+            if result == STATE_MENU:
+                self._quit_requested = True
             return
 
         self.screen.fill((80, 72, 55))
@@ -715,4 +755,4 @@ if __name__ == "__main__":
         name      = sys.argv[2] if len(sys.argv) > 2 else "Joueur"
     else:
         server_ip, name, screen = _pre_menu()
-    ClientGame(server_ip, player_name=name, screen=screen).run()
+    ClientGame(server_ip, player_name=name, screen=screen).run(owns_pygame=True)

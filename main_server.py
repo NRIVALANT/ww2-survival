@@ -7,10 +7,11 @@ import socket
 
 from settings import (
     SCREEN_W, SCREEN_H, FPS, TITLE,
-    STATE_PLAYING, STATE_PAUSED, STATE_GAMEOVER, STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU,
+    STATE_PLAYING, STATE_PAUSED, STATE_GAMEOVER, STATE_MENU, STATE_SETTINGS,
+    STATE_NETWORK_MENU, STATE_LOBBY,
     PLAYER_SPEED, WEAPONS, WEAPON_ORDER, PLAYER_COLORS,
     NET_PORT, NET_BROADCAST_RATE,
-    REVIVE_RANGE, REVIVE_TIME, DOWN_TIMEOUT,
+    REVIVE_RANGE, REVIVE_TIME,
     UPGRADE_MACHINE_TILE, KEYBINDS,
 )
 from game.entities.upgrade_machine import UpgradeMachine
@@ -26,8 +27,8 @@ from game.ui.hud   import HUD
 from game.ui.menus import Menus
 from game.network.server   import GameServer
 from game.network.messages import (
-    MSG_INPUT, MSG_GAME_STATE,
-    encode, make_game_state,
+    MSG_INPUT, MSG_GAME_STATE, MSG_START_GAME,
+    encode, make_game_state, make_lobby_state,
     serialize_player, serialize_enemy, serialize_bullet,
     serialize_grenade, serialize_pickup,
 )
@@ -67,7 +68,7 @@ class ServerGame:
         self._broadcast_interval = 1.0 / NET_BROADCAST_RATE
 
         self._tick = 0
-        self.state = STATE_PLAYING
+        self.state = STATE_LOBBY
         self._settings_return_state = STATE_PLAYING   # d'où on vient quand on ouvre les paramètres
 
         # Splash "IP à donner aux clients" affiché en superposition pendant quelques secondes
@@ -77,6 +78,10 @@ class ServerGame:
         self._init_world()
         self.hud   = HUD()
         self.menus = Menus()
+
+        # Données conservées pour l'écran game over
+        self._gameover_scores: list[dict] = []
+        self._gameover_wave: int = 0
 
     # ------------------------------------------------------------------
     def _get_local_ip(self) -> str:
@@ -123,10 +128,11 @@ class ServerGame:
         )
 
     # ------------------------------------------------------------------
-    def run(self):
-        """Boucle principale. Retourne normalement pour permettre le retour au menu."""
-        # Déterminer si on possède pygame (lancement direct) ou si on partage (depuis main.py)
-        owns_pygame = len(sys.argv) > 1   # True si lancé directement avec argument
+    def run(self, owns_pygame: bool = False):
+        """Boucle principale. Retourne normalement pour permettre le retour au menu.
+        owns_pygame=True  -> lancé directement (__main__), sys.exit() à la fin.
+        owns_pygame=False -> appelé depuis main.py ou _pre_menu, on fait return.
+        """
         self._quit_requested = False
         while True:
             dt = self.clock.tick(FPS) / 1000.0
@@ -161,6 +167,12 @@ class ServerGame:
     # ------------------------------------------------------------------
     def _handle_local_event(self, event):
         host = self.players.get(self.host_player_id)
+
+        # Lobby : seul l'hôte gère l'événement de lancement
+        if self.state == STATE_LOBBY:
+            self.menus.handle_lobby_event(event, is_host=True)
+            return
+
         if not host:
             return
 
@@ -176,6 +188,10 @@ class ServerGame:
                 self.state = STATE_PAUSED
             elif self.state == STATE_PAUSED:
                 self.state = STATE_PLAYING
+            return
+
+        if self.state == STATE_GAMEOVER:
+            self.menus.handle_gameover_event(event)
             return
 
         if self.state == STATE_PAUSED:
@@ -204,6 +220,9 @@ class ServerGame:
                     enemy.players = players_list
                     enemy.ai.players = players_list
                 print(f"[+] {name} (ID {pid}) a rejoint la partie")
+                # Broadcaster le nouvel état du lobby à tous les clients
+                if self.state == STATE_LOBBY:
+                    self._broadcast_lobby()
 
             elif mtype == "player_left":
                 pid = msg["player_id"]
@@ -213,6 +232,8 @@ class ServerGame:
                     players_list = list(self.players.values())
                     self.wave_manager.players = players_list
                     print(f"[-] {name} (ID {pid}) a quitte la partie")
+                    if self.state == STATE_LOBBY:
+                        self._broadcast_lobby()
 
             elif "input" in msg:
                 pid = msg["player_id"]
@@ -223,10 +244,13 @@ class ServerGame:
                     player = self.players.get(pid)
                     if player and player.state == "alive" and not player.is_reloading:
                         wdata = player.get_weapon_data()
-                        aw = player.active_weapon
-                        if player.ammo.get(aw, 0) < wdata.get("max_ammo", 1):
-                            player.is_reloading = True
-                            player.reload_timer = wdata.get("reload_time", 1.5)
+                        if "reload_time" not in wdata:
+                            pass   # arme sans rechargement (ex: grenade) → ignorer
+                        else:
+                            aw = player.active_weapon
+                            if player.ammo.get(aw, 0) < wdata.get("max_ammo", 1):
+                                player.is_reloading = True
+                                player.reload_timer = wdata["reload_time"]
                 elif inp.get("type") == "upgrade_req":
                     player = self.players.get(pid)
                     if player and self.upgrade_machine.player_in_range(player):
@@ -234,6 +258,18 @@ class ServerGame:
                         self.server.broadcast(encode({"type": "upgrade_result",
                                                       "player_id": pid,
                                                       "message": result_msg}))
+
+    # ------------------------------------------------------------------
+    def _broadcast_lobby(self):
+        """Envoie l'état actuel du lobby à tous les clients connectés."""
+        lobby_players = []
+        for pid, p in self.players.items():
+            lobby_players.append({
+                "player_id":   pid,
+                "player_name": p.player_name,
+                "is_host":     (pid == self.host_player_id),
+            })
+        self.server.broadcast(encode(make_lobby_state(lobby_players)))
 
     # ------------------------------------------------------------------
     def _update(self, dt: float):
@@ -292,7 +328,7 @@ class ServerGame:
         if players_list and all(p.state == "dead" for p in players_list):
             self.state = STATE_GAMEOVER
             scores = [
-                {"player_id": p.player_id, "name": p.player_name, "score": p.score}
+                {"player_id": p.player_id, "player_name": p.player_name, "score": p.score}
                 for p in players_list
             ]
             self.server.broadcast(encode({
@@ -300,6 +336,11 @@ class ServerGame:
                 "wave_reached": self.wave_manager.wave_number,
                 "scores": scores,
             }))
+            self._gameover_wave = self.wave_manager.wave_number
+            self._gameover_scores = sorted(
+                [{"player_name": p.player_name, "score": p.score} for p in players_list],
+                key=lambda x: x["score"], reverse=True
+            )
             return
 
         # ---- Ennemis ----
@@ -369,7 +410,7 @@ class ServerGame:
                          self.tilemap)
         player.pos = pygame.Vector2(player.rect.center)
         player.facing_angle     = float(inp.get("aim_angle", 0))
-        player.active_weapon_idx = int(inp.get("weapon_idx", 0))
+        player.active_weapon_idx = max(0, min(int(inp.get("weapon_idx", 0)), len(WEAPON_ORDER) - 1))
 
         player.fire_timer   = max(0.0, player.fire_timer   - dt)
         player.iframe_timer = max(0.0, player.iframe_timer - dt)
@@ -463,6 +504,28 @@ class ServerGame:
     def _draw(self):
         host = self.players.get(self.host_player_id)
 
+        # ---- Lobby ----
+        if self.state == STATE_LOBBY:
+            pygame.mouse.set_visible(True)
+            lobby_players = [
+                {"player_id": pid, "player_name": p.player_name,
+                 "is_host": (pid == self.host_player_id)}
+                for pid, p in self.players.items()
+            ]
+            result = self.menus.draw_lobby(
+                self.screen,
+                players=lobby_players,
+                local_player_id=self.host_player_id,
+                is_host=True,
+                server_ip=self._local_ip,
+            )
+            if result == "start":
+                self.state = STATE_PLAYING
+                pygame.mouse.set_visible(False)
+                # Signaler à tous les clients que la partie commence
+                self.server.broadcast(encode({"type": MSG_START_GAME}))
+            return
+
         if self.state == STATE_SETTINGS:
             pygame.mouse.set_visible(True)
             self.menus.draw_settings_menu(self.screen)
@@ -471,13 +534,13 @@ class ServerGame:
         pygame.mouse.set_visible(self.state == STATE_PAUSED)
 
         if self.state == STATE_GAMEOVER:
-            self.screen.fill((10, 5, 5))
-            font = pygame.font.SysFont("Arial", 52, bold=True)
-            txt = font.render("PARTIE TERMINEE", True, (220, 50, 50))
-            self.screen.blit(txt, (SCREEN_W//2 - txt.get_width()//2, SCREEN_H//2 - 60))
-            font2 = pygame.font.SysFont("Arial", 24)
-            txt2 = font2.render("Fermez la fenetre pour quitter", True, (180, 180, 180))
-            self.screen.blit(txt2, (SCREEN_W//2 - txt2.get_width()//2, SCREEN_H//2 + 20))
+            pygame.mouse.set_visible(True)
+            result = self.menus.draw_game_over(
+                self.screen, 0, self._gameover_wave,
+                all_scores=self._gameover_scores,
+            )
+            if result == STATE_MENU:
+                self._quit_requested = True
             return
 
         self.screen.fill((80, 72, 55))
@@ -650,4 +713,4 @@ if __name__ == "__main__":
         name = sys.argv[1]
     else:
         name, screen = _pre_menu()
-    ServerGame(host_name=name, screen=screen).run()
+    ServerGame(host_name=name, screen=screen).run(owns_pygame=True)

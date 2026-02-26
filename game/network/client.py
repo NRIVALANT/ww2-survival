@@ -56,6 +56,10 @@ class GameClient:
         async for raw in ws:
             msg = decode(raw)
             self.receive_queue.put(msg)
+        # La boucle s'est terminée = serveur a fermé la connexion
+        if self._running:
+            self.receive_queue.put({"type": "error", "reason": "disconnected_by_server"})
+            self._running = False
 
     async def _connect_and_run(self):
         # Créer la asyncio.Queue dans le bon loop
@@ -70,20 +74,24 @@ class GameClient:
                     "player_name": self.player_name,
                 }))
 
-                # Attendre MSG_WELCOME
+                # Attendre MSG_WELCOME (ou MSG_ERROR si serveur plein)
                 raw = await asyncio.wait_for(ws.recv(), timeout=10.0)
                 welcome = decode(raw)
                 if welcome.get("type") == MSG_WELCOME:
                     self.player_id = welcome["player_id"]
-                self.receive_queue.put(welcome)
-                self._connected.set()
-
-                # Lancer send + recv en parallèle
-                self._running = True
-                await asyncio.gather(
-                    self._send_loop(ws),
-                    self._recv_loop(ws),
-                )
+                    self.receive_queue.put(welcome)
+                    self._connected.set()
+                    # Lancer send + recv en parallèle seulement si accepté
+                    self._running = True
+                    await asyncio.gather(
+                        self._send_loop(ws),
+                        self._recv_loop(ws),
+                    )
+                else:
+                    # Refus du serveur (server_full, etc.) → convertir en erreur lisible
+                    reason = welcome.get("reason", "refused_by_server")
+                    self.receive_queue.put({"type": "error", "reason": reason})
+                    self._connected.set()
         except Exception as e:
             self.receive_queue.put({"type": "error", "reason": str(e)})
             self._connected.set()   # débloquer wait_connected même en cas d'erreur

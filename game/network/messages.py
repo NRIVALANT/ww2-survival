@@ -21,6 +21,8 @@ MSG_PLAYER_REVIVED = "player_revived"
 MSG_PLAYER_DEAD    = "player_dead"
 MSG_ERROR          = "error"
 MSG_UPGRADE_RESULT = "upgrade_result"
+MSG_LOBBY_STATE    = "lobby_state"   # serveur -> clients : liste joueurs en attente
+MSG_START_GAME     = "start_game"    # serveur -> clients : début de partie
 
 
 # ---- Serialisation ----
@@ -69,6 +71,11 @@ def make_game_state(tick: int, players_data: list, enemies_data: list,
     }
     msg.update(wave_info)
     return msg
+
+
+def make_lobby_state(players: list) -> dict:
+    """players = [{"player_id": int, "player_name": str, "is_host": bool}, ...]"""
+    return {"type": MSG_LOBBY_STATE, "players": players}
 
 
 # ---- Serialisation d'entites ----

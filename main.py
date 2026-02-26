@@ -148,6 +148,9 @@ class Game:
             else:
                 self.menus.handle_pause_event(event)
 
+        elif self.state == STATE_GAMEOVER:
+            self.menus.handle_gameover_event(event)
+
         elif self.state == STATE_SETTINGS:
             result = self.menus.handle_settings_event(event)
             if result == "back":
@@ -266,10 +269,13 @@ class Game:
             return
 
         if self.state == STATE_GAMEOVER:
+            pygame.mouse.set_visible(True)
             result = self.menus.draw_game_over(
                 self.screen,
                 self._last_gameover_score,
                 self._last_gameover_wave,
+                all_scores=[{"player_name": self.player.player_name,
+                             "score": self._last_gameover_score}],
             )
             if result == STATE_MENU:
                 self.state = STATE_MENU

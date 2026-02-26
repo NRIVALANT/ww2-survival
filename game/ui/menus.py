@@ -3,7 +3,7 @@ import pygame
 from settings import (
     SCREEN_W, SCREEN_H, STATE_PLAYING, STATE_MENU, STATE_GAMEOVER,
     COL_BLACK, COL_WHITE, COL_YELLOW, COL_RED, COL_GREY, COL_DARK_GREEN,
-    KEYBINDS, KEYBINDS_DEFAULT, STATE_SETTINGS,
+    KEYBINDS, KEYBINDS_DEFAULT, STATE_SETTINGS, PLAYER_COLORS, NET_MAX_PLAYERS,
 )
 
 # Résultats possibles du menu réseau
@@ -58,6 +58,12 @@ class Menus:
 
         # Menu pause : résultat clic stocké par handle_pause_event, consommé par draw_pause
         self._pause_result = None
+
+        # Menu game over : résultat clic stocké par handle_gameover_event, consommé par draw_game_over
+        self._gameover_result = None
+
+        # Lobby : résultat bouton "LANCER" stocké par handle_lobby_event
+        self._lobby_start_result = None
 
         # État du menu réseau
         self._net_selected = 0          # 0=Héberger, 1=Rejoindre, 2=Solo
@@ -603,25 +609,231 @@ class Menus:
         return result
 
     # ------------------------------------------------------------------
+    def handle_gameover_event(self, event: pygame.event.Event) -> None:
+        """
+        Gère les événements MOUSEBUTTONDOWN pour le bouton "RETOUR AU MENU" du game over.
+        Stocke le résultat dans _gameover_result, consommé par draw_game_over().
+        """
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            btn_w, btn_h = 300, 52
+            btn_x = SCREEN_W // 2 - btn_w // 2
+            btn_y = SCREEN_H - 140
+            btn_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+            if btn_rect.collidepoint(event.pos):
+                self._gameover_result = STATE_MENU
+
+    # ------------------------------------------------------------------
     def draw_game_over(self, surface: pygame.Surface,
-                       final_score: int, wave_reached: int) -> str | None:
-        """Ecran game over. Renvoie STATE_MENU si ESPACE presse."""
+                       final_score: int, wave_reached: int,
+                       all_scores=None) -> str | None:
+        """
+        Ecran game over.
+        - Si all_scores est une liste de dicts {"player_name": ..., "score": ...},
+          affiche le classement de tous les joueurs (trié par score décroissant).
+        - Sinon affiche seulement final_score comme avant.
+        Renvoie STATE_MENU si ESPACE / ENTRÉE pressé ou bouton "RETOUR AU MENU" cliqué.
+        """
         surface.fill((10, 5, 5))
 
-        _center_text(surface, self._font_title, "MORT AU COMBAT", COL_RED, 140)
+        _center_text(surface, self._font_title, "MORT AU COMBAT", COL_RED, 60)
         _center_text(surface, self._font_sub,
-                     f"Vague atteinte : {wave_reached}", COL_GREY, 240)
-        _center_text(surface, self._font_sub,
-                     f"Score final : {final_score:,}", COL_YELLOW, 285)
+                     f"Vague atteinte : {wave_reached}", COL_GREY, 158)
 
         pygame.draw.line(surface, COL_RED,
-                         (SCREEN_W // 4, 330), (SCREEN_W * 3 // 4, 330), 2)
+                         (SCREEN_W // 4, 200), (SCREEN_W * 3 // 4, 200), 2)
 
-        if self._blink_state:
+        if all_scores:
+            # Affichage classement multi-joueurs
+            scores_sorted = sorted(all_scores, key=lambda x: x.get("score", 0), reverse=True)
+            _center_text(surface, self._font_sub, "CLASSEMENT", COL_YELLOW, 215)
+            y_row = 258
+            for i, entry in enumerate(scores_sorted):
+                name  = entry.get("player_name", "?")
+                score = entry.get("score", 0)
+                # Couleur jaune pour le premier (meilleur score)
+                row_col = COL_YELLOW if i == 0 else COL_WHITE
+                rank_str = f"{i + 1}.  {name}  —  {score:,} pts"
+                _center_text(surface, self._font_sub, rank_str, row_col, y_row)
+                y_row += 40
+        else:
+            # Mode solo : affichage score unique
             _center_text(surface, self._font_sub,
-                         "[ ESPACE ] RETOUR AU MENU", COL_WHITE, SCREEN_H - 120)
+                         f"Score final : {final_score:,}", COL_YELLOW, 230)
+            y_row = 270
+
+        # Séparateur bas
+        sep_y = max(y_row + 10, 350)
+        pygame.draw.line(surface, COL_RED,
+                         (SCREEN_W // 4, sep_y), (SCREEN_W * 3 // 4, sep_y), 2)
+
+        # Bouton "RETOUR AU MENU" cliquable
+        btn_w, btn_h = 300, 52
+        btn_x = SCREEN_W // 2 - btn_w // 2
+        btn_y = SCREEN_H - 140
+        mx, my = pygame.mouse.get_pos()
+        btn_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+        is_hover = btn_rect.collidepoint(mx, my)
+        btn_col  = (180, 50, 50) if is_hover else (120, 30, 30)
+        bg_btn = pygame.Surface((btn_w, btn_h), pygame.SRCALPHA)
+        bg_btn.fill((*btn_col, 220))
+        surface.blit(bg_btn, (btn_x, btn_y))
+        pygame.draw.rect(surface, (220, 70, 70), btn_rect, 2, border_radius=7)
+        btn_lbl = self._font_sub.render("RETOUR AU MENU", True, COL_WHITE)
+        surface.blit(btn_lbl, (btn_x + btn_w // 2 - btn_lbl.get_width() // 2,
+                               btn_y + btn_h // 2 - btn_lbl.get_height() // 2))
+
+        # Texte clignotant ESPACE
+        if self._blink_state:
+            _center_text(surface, self._font_normal,
+                         "[ ESPACE / ENTRÉE ] pour revenir au menu",
+                         COL_GREY, SCREEN_H - 72, shadow=False)
+
+        # Consommer le résultat stocké par handle_gameover_event()
+        if self._gameover_result is not None:
+            result = self._gameover_result
+            self._gameover_result = None
+            return result
 
         keys = pygame.key.get_pressed()
         if keys[pygame.K_SPACE] or keys[pygame.K_RETURN]:
             return STATE_MENU
         return None
+
+    # ------------------------------------------------------------------
+    def handle_lobby_event(self, event: pygame.event.Event,
+                           is_host: bool = False) -> None:
+        """
+        Gère les événements du lobby.
+        is_host=True : affiche le bouton LANCER (seul l'hôte peut lancer).
+        Stocke "start" dans _lobby_start_result si l'hôte clique LANCER.
+        """
+        if not is_host:
+            return
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            btn_w, btn_h = 280, 54
+            btn_x = SCREEN_W // 2 - btn_w // 2
+            btn_y = SCREEN_H - 120
+            if pygame.Rect(btn_x, btn_y, btn_w, btn_h).collidepoint(event.pos):
+                self._lobby_start_result = "start"
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+            self._lobby_start_result = "start"
+
+    # ------------------------------------------------------------------
+    def draw_lobby(self, surface: pygame.Surface,
+                   players: list,
+                   local_player_id: int,
+                   is_host: bool,
+                   server_ip: str = "") -> str | None:
+        """
+        Écran de lobby affiché en attente avant le début de la partie.
+        players = [{"player_id": int, "player_name": str, "is_host": bool}, ...]
+        Retourne "start" si l'hôte clique LANCER, sinon None.
+        """
+        surface.fill((12, 10, 18))
+
+        # Titre
+        _center_text(surface, self._font_title, "SALLE D'ATTENTE", COL_YELLOW, 40)
+        _center_text(surface, self._font_small,
+                     f"En attente de joueurs...  ({len(players)}/{NET_MAX_PLAYERS})",
+                     COL_GREY, 120)
+
+        # Séparateur haut
+        pygame.draw.line(surface, COL_YELLOW,
+                         (SCREEN_W // 4, 155), (SCREEN_W * 3 // 4, 155), 2)
+
+        # Liste des joueurs
+        card_w, card_h = 480, 58
+        card_x = SCREEN_W // 2 - card_w // 2
+        card_y = 170
+
+        for entry in players:
+            pid      = entry.get("player_id", 0)
+            pname    = entry.get("player_name", f"Joueur {pid}")
+            phost    = entry.get("is_host", False)
+            is_local = (pid == local_player_id)
+            color    = PLAYER_COLORS[(pid - 1) % len(PLAYER_COLORS)]
+
+            # Fond de la carte
+            bg = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
+            bg.fill((color[0]//6, color[1]//6, color[2]//6, 200))
+            surface.blit(bg, (card_x, card_y))
+            border_col = color if is_local else (80, 80, 80)
+            pygame.draw.rect(surface, border_col,
+                             (card_x, card_y, card_w, card_h), 2, border_radius=6)
+
+            # Pastille couleur joueur
+            pygame.draw.circle(surface, color,
+                               (card_x + 28, card_y + card_h // 2), 12)
+            pygame.draw.circle(surface, COL_WHITE,
+                               (card_x + 28, card_y + card_h // 2), 12, 2)
+
+            # Nom
+            name_col = COL_WHITE if is_local else COL_GREY
+            n_surf = self._font_sub.render(pname, True, name_col)
+            surface.blit(n_surf, (card_x + 52, card_y + card_h // 2 - n_surf.get_height() // 2))
+
+            # Badge HOST / VOUS
+            badge_parts = []
+            if phost:
+                badge_parts.append(("HÔTE", COL_YELLOW))
+            if is_local:
+                badge_parts.append(("VOUS", (100, 200, 100)))
+            bx = card_x + card_w - 10
+            for label, bcol in reversed(badge_parts):
+                bs = self._font_small.render(label, True, bcol)
+                bx -= bs.get_width() + 6
+                surface.blit(bs, (bx, card_y + card_h // 2 - bs.get_height() // 2))
+
+            card_y += card_h + 8
+
+        # Emplacements vides
+        for i in range(len(players), NET_MAX_PLAYERS):
+            bg = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
+            bg.fill((30, 30, 30, 120))
+            surface.blit(bg, (card_x, card_y))
+            pygame.draw.rect(surface, (50, 50, 50),
+                             (card_x, card_y, card_w, card_h), 1,
+                             border_radius=6, )
+            empty_s = self._font_small.render("— En attente d'un joueur... —",
+                                              True, (70, 70, 70))
+            surface.blit(empty_s, (card_x + card_w // 2 - empty_s.get_width() // 2,
+                                   card_y + card_h // 2 - empty_s.get_height() // 2))
+            card_y += card_h + 8
+
+        # IP affichée pour que les autres puissent rejoindre
+        if server_ip:
+            ip_surf = self._font_normal.render(
+                f"IP : {server_ip}  — donnez cette adresse aux autres joueurs",
+                True, (100, 180, 100))
+            surface.blit(ip_surf, (SCREEN_W // 2 - ip_surf.get_width() // 2,
+                                   SCREEN_H - 170))
+
+        # Bouton LANCER (hôte seulement) ou message d'attente (clients)
+        if is_host:
+            btn_w, btn_h = 280, 54
+            btn_x = SCREEN_W // 2 - btn_w // 2
+            btn_y = SCREEN_H - 120
+            mx, my = pygame.mouse.get_pos()
+            is_hov = pygame.Rect(btn_x, btn_y, btn_w, btn_h).collidepoint(mx, my)
+            bg_col = (50, 150, 50) if is_hov else (30, 100, 30)
+            bg_btn = pygame.Surface((btn_w, btn_h), pygame.SRCALPHA)
+            bg_btn.fill((*bg_col, 230))
+            surface.blit(bg_btn, (btn_x, btn_y))
+            pygame.draw.rect(surface, (80, 200, 80),
+                             (btn_x, btn_y, btn_w, btn_h), 2, border_radius=8)
+            lbl = self._font_sub.render("▶  LANCER LA PARTIE", True, COL_WHITE)
+            surface.blit(lbl, (btn_x + btn_w // 2 - lbl.get_width() // 2,
+                                btn_y + btn_h // 2 - lbl.get_height() // 2))
+            hint = self._font_small.render("ou appuyez sur ENTRÉE", True, COL_GREY)
+            surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2,
+                                btn_y + btn_h + 6))
+        else:
+            if self._blink_state:
+                _center_text(surface, self._font_normal,
+                             "En attente que l'hôte lance la partie...",
+                             COL_GREY, SCREEN_H - 100, shadow=False)
+
+        # Consommer le résultat
+        result = self._lobby_start_result
+        self._lobby_start_result = None
+        return result
