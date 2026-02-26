@@ -1,32 +1,34 @@
-# enemy.py - Entites ennemis avec IA
+# enemy.py - Entites ennemis avec IA (supporte multi-joueurs)
 import pygame
 import math
 import random
+import itertools
 from settings import (
     ENEMY_TYPES, ENEMY_BULLET_SPEED, ENEMY_BULLET_RANGE, ENEMY_SPREAD,
-    TILE_SIZE, COL_BLACK,
+    TILE_SIZE,
 )
-from game.systems.ai import AIController, AI_SHOOT, AI_DEAD, AI_PATROL
+from game.systems.ai import AIController, AI_SHOOT, AI_PATROL
 from game.systems.collision import move_and_collide
+
+
+_enemy_counter = itertools.count(1)   # IDs uniques globaux
 
 
 def _make_enemy_surf(color: tuple, size: int = 30) -> pygame.Surface:
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
     cx, cy = size // 2, size // 2
-    # Corps
     pygame.draw.circle(surf, color, (cx, cy), size // 3)
-    # Casque (plus fonce)
     hc = (max(0, color[0] - 40), max(0, color[1] - 30), max(0, color[2] - 30))
     pygame.draw.ellipse(surf, hc, (cx - 8, cy - 12, 16, 10))
-    # Arme pointant droite
     pygame.draw.rect(surf, (40, 40, 40), (cx + 2, cy - 2, size // 2 - 4, 4))
     return surf
 
 
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, x: float, y: float, enemy_type: str,
-                 pathfinder, player, tilemap, groups=()):
+                 pathfinder, players, tilemap, groups=()):
         super().__init__(*groups)
+        self.enemy_id   = next(_enemy_counter)
         self.enemy_type = enemy_type
         data            = ENEMY_TYPES[enemy_type]
 
@@ -41,29 +43,38 @@ class Enemy(pygame.sprite.Sprite):
         self.score_value     = data["score"]
         self.color           = data["color"]
 
-        self.velocity        = pygame.Vector2(0, 0)
-        self.facing_angle    = random.uniform(0, 360)
-        self.fire_timer      = random.uniform(0, self.fire_rate)
+        self.velocity          = pygame.Vector2(0, 0)
+        self.facing_angle      = random.uniform(0, 360)
+        self.fire_timer        = random.uniform(0, self.fire_rate)
         self.suppression_timer = 0.0
-        self.alive           = True
+        self.alive             = True
+
+        # players peut etre un joueur unique (retro-compat) ou une liste
+        self.players = players if isinstance(players, list) else [players]
 
         # IA
-        self.ai = AIController(self, player, tilemap, pathfinder)
+        self.ai = AIController(self, self.players, tilemap, pathfinder)
 
-        # Sprite
         self._base_surf = _make_enemy_surf(self.color, 30)
         self.image      = self._base_surf
         self.rect       = self.image.get_rect(center=(int(x), int(y)))
 
     # ------------------------------------------------------------------
-    def update(self, dt: float, tilemap, player, bullet_group, explosion_group):
+    def update(self, dt: float, tilemap, players, bullet_group, explosion_group):
         if not self.alive:
             return
+
+        # Mettre a jour la liste de joueurs de l'IA
+        if isinstance(players, list):
+            self.players = players
+            self.ai.players = players
+        else:
+            self.players = [players]
+            self.ai.players = [players]
 
         self.suppression_timer = max(0.0, self.suppression_timer - dt)
         self.fire_timer        = max(0.0, self.fire_timer - dt)
 
-        # IA
         self.ai.update(dt)
 
         # Deplacement
@@ -78,15 +89,13 @@ class Enemy(pygame.sprite.Sprite):
 
         # Rotation smooth vers la cible
         target_angle = self.facing_angle
-        if self.ai.state == AI_SHOOT or self.ai.state == AI_PATROL:
-            p_pos = pygame.Vector2(player.rect.center)
+        current_target = self.ai.current_target
+
+        if self.ai.state == AI_SHOOT and current_target:
+            p_pos = pygame.Vector2(current_target.rect.center)
             dx = p_pos.x - self.pos.x
             dy = p_pos.y - self.pos.y
-            if self.ai.state == AI_SHOOT:
-                target_angle = math.degrees(math.atan2(dy, dx))
-            elif self.velocity.length() > 0:
-                target_angle = math.degrees(math.atan2(self.velocity.y,
-                                                        self.velocity.x))
+            target_angle = math.degrees(math.atan2(dy, dx))
         elif self.velocity.length() > 0:
             target_angle = math.degrees(math.atan2(self.velocity.y,
                                                     self.velocity.x))
@@ -95,14 +104,14 @@ class Enemy(pygame.sprite.Sprite):
         self.facing_angle += diff * min(1.0, 7.0 * dt)
 
         # Tir
-        if self.ai.state == AI_SHOOT and self.fire_timer <= 0:
-            self._shoot(player, bullet_group)
+        if self.ai.state == AI_SHOOT and self.fire_timer <= 0 and current_target:
+            self._shoot(current_target, bullet_group)
             self.fire_timer = self.fire_rate
 
     # ------------------------------------------------------------------
-    def _shoot(self, player, bullet_group):
+    def _shoot(self, target_player, bullet_group):
         from game.entities.bullet import Bullet
-        p_pos = pygame.Vector2(player.rect.center)
+        p_pos = pygame.Vector2(target_player.rect.center)
         dx = p_pos.x - self.pos.x
         dy = p_pos.y - self.pos.y
         base_angle = math.atan2(dy, dx)
@@ -115,6 +124,7 @@ class Enemy(pygame.sprite.Sprite):
             math.sin(angle) * ENEMY_BULLET_SPEED,
             damage       = self.damage,
             owner        = "enemy",
+            owner_id     = None,
             bullet_range = ENEMY_BULLET_RANGE,
             groups       = (bullet_group,),
         )
@@ -127,8 +137,6 @@ class Enemy(pygame.sprite.Sprite):
         if self.hp <= 0:
             self.hp    = 0
             self.alive = False
-            # Ne pas appeler self.kill() ici : main.py détecte la mort via
-            # enemy.alive et retire l'ennemi des groupes (dead_enemies).
 
     # ------------------------------------------------------------------
     def draw(self, surface: pygame.Surface, camera):
@@ -148,7 +156,7 @@ class Enemy(pygame.sprite.Sprite):
         pygame.draw.rect(surface, (200 - g, g, 20),
                          (bx, by, int(bar_w * ratio), bar_h))
 
-        # Indicateur d'etat (debug/info)
+        # Indicateur d'etat
         state = self.ai.state
         if state != AI_PATROL:
             col = {
@@ -162,15 +170,15 @@ class Enemy(pygame.sprite.Sprite):
 
 # ---- Sous-classes ---------------------------------------------------
 class SoldierEnemy(Enemy):
-    def __init__(self, x, y, pathfinder, player, tilemap, groups=()):
-        super().__init__(x, y, "soldier", pathfinder, player, tilemap, groups)
+    def __init__(self, x, y, pathfinder, players, tilemap, groups=()):
+        super().__init__(x, y, "soldier", pathfinder, players, tilemap, groups)
 
 
 class OfficerEnemy(Enemy):
-    def __init__(self, x, y, pathfinder, player, tilemap, groups=()):
-        super().__init__(x, y, "officer", pathfinder, player, tilemap, groups)
+    def __init__(self, x, y, pathfinder, players, tilemap, groups=()):
+        super().__init__(x, y, "officer", pathfinder, players, tilemap, groups)
 
 
 class HeavyEnemy(Enemy):
-    def __init__(self, x, y, pathfinder, player, tilemap, groups=()):
-        super().__init__(x, y, "heavy", pathfinder, player, tilemap, groups)
+    def __init__(self, x, y, pathfinder, players, tilemap, groups=()):
+        super().__init__(x, y, "heavy", pathfinder, players, tilemap, groups)

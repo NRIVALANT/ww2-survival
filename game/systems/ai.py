@@ -1,4 +1,4 @@
-# ai.py - Machine d'etats IA pour les ennemis
+# ai.py - Machine d'etats IA pour les ennemis (supporte multi-joueurs)
 import pygame
 import math
 import random
@@ -23,16 +23,18 @@ def _dist(a: pygame.Vector2, b: pygame.Vector2) -> float:
 
 
 class AIController:
-    def __init__(self, enemy, player, tilemap, pathfinder):
-        self.enemy       = enemy
-        self.player      = player
-        self.tilemap     = tilemap
-        self.pathfinder  = pathfinder
+    def __init__(self, enemy, players, tilemap, pathfinder):
+        self.enemy      = enemy
+        # Accepte un joueur unique (retro-compat) ou une liste
+        self.players    = players if isinstance(players, list) else [players]
+        self.tilemap    = tilemap
+        self.pathfinder = pathfinder
 
-        self.state       = AI_PATROL
-        self.alert_timer = 0.0
+        self.state          = AI_PATROL
+        self.alert_timer    = 0.0
         self.los_lost_timer = 0.0
         self.cover_pos: pygame.Vector2 | None = None
+        self.current_target = None   # joueur actuellement cible
 
         # Points de patrouille
         self.patrol_points: list[pygame.Vector2] = \
@@ -44,9 +46,27 @@ class AIController:
         self.path_timer   = 0.0
 
     # ------------------------------------------------------------------
+    def _get_nearest_alive_player(self):
+        """Renvoie le joueur vivant le plus proche, ou None si tous morts."""
+        alive = [p for p in self.players
+                 if getattr(p, "state", "alive") == "alive"]
+        if not alive:
+            return None
+        return min(alive, key=lambda p: (p.pos - self.enemy.pos).length())
+
+    # ------------------------------------------------------------------
     def update(self, dt: float):
         e = self.enemy
-        p_pos = pygame.Vector2(self.player.rect.center)
+
+        target = self._get_nearest_alive_player()
+        if target is None:
+            # Plus de joueurs vivants, patrouille
+            self.state = AI_PATROL
+            self._do_patrol(dt)
+            return
+
+        self.current_target = target
+        p_pos = pygame.Vector2(target.rect.center)
         e_pos = e.pos
 
         dist_to_player = _dist(e_pos, p_pos)
@@ -70,7 +90,6 @@ class AIController:
             if dist_to_player <= shoot_range and has_los:
                 self.state = AI_SHOOT
             elif dist_to_player > CHASE_RANGE:
-                # Joueur trop loin : retour patrouille
                 if not has_los:
                     self.los_lost_timer += dt
                     if self.los_lost_timer > 3.0:
@@ -96,7 +115,6 @@ class AIController:
             if self.cover_pos:
                 d = _dist(e_pos, self.cover_pos)
                 if d < TILE_SIZE * 1.5:
-                    # Arrive a couverture : retirer si LOS est perdu
                     if not has_line_of_sight(e_pos, p_pos, self.tilemap):
                         self.state = AI_SHOOT
                         self.cover_pos = None
@@ -107,11 +125,11 @@ class AIController:
         if self.state == AI_PATROL:
             self._do_patrol(dt)
         elif self.state in (AI_ALERT,):
-            pass  # Stand still, alert animation
+            pass
         elif self.state == AI_CHASE:
             self._do_chase(dt, p_pos)
         elif self.state == AI_SHOOT:
-            pass  # L'entite enemy gere le tir
+            pass
         elif self.state == AI_COVER:
             if self.cover_pos:
                 self._do_move_to(dt, self.cover_pos)
@@ -135,7 +153,6 @@ class AIController:
     def _do_move_to(self, dt: float, target_pos: pygame.Vector2,
                     speed_mod: float = 1.0):
         e = self.enemy
-        # Recalcul du chemin periodique
         self.path_timer -= dt
         if self.path_timer <= 0 or not self.current_path:
             self.current_path = self.pathfinder.find_path(e.pos, target_pos)
@@ -144,7 +161,6 @@ class AIController:
         if not self.current_path:
             return
 
-        # Avancer vers prochain waypoint
         wp = self.current_path[0]
         d = _dist(e.pos, wp)
         if d < TILE_SIZE * 0.6:

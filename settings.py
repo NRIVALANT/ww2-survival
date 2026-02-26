@@ -136,6 +136,29 @@ STATE_PAUSED   = "paused"
 STATE_GAMEOVER = "gameover"
 STATE_WAVE_CLEAR = "wave_clear"
 
+# --- Reseau ---
+NET_PORT           = 8765
+NET_MAX_PLAYERS    = 4
+NET_BROADCAST_RATE = 20      # snapshots/s envoyes aux clients
+NET_TIMEOUT        = 10.0    # secondes avant kick client silencieux
+
+# --- Revive (coop) ---
+REVIVE_TIME    = 3.0    # secondes pour relever (touche E maintenue)
+REVIVE_RANGE   = 70     # px de portee pour relever
+DOWN_TIMEOUT   = 30.0   # secondes avant mort definitive si non releve
+
+# --- Couleurs joueurs multi ---
+PLAYER_COLORS = [
+    (55,  135,  55),   # Joueur 1 - vert
+    (55,  100, 180),   # Joueur 2 - bleu
+    (200, 170,  40),   # Joueur 3 - jaune
+    (180,  60, 180),   # Joueur 4 - violet
+]
+
+# --- Score ---
+POINTS_HIT     = 10    # points par balle qui touche
+COL_POINTS_POPUP = (255, 230, 60)
+
 # --- Systeme de points (style CoD Zombies) ---
 POINTS_HIT              = 10    # points gagnés par balle qui touche un ennemi
 POINTS_KILL_BASE        = 100   # points bonus pour tuer un ennemi (base)

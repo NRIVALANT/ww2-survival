@@ -1,9 +1,9 @@
-# wave_manager.py - Gestionnaire de vagues d'ennemis
+# wave_manager.py - Gestionnaire de vagues d'ennemis (supporte multi-joueurs)
 import pygame
 import random
 from settings import (
     WAVE_COOLDOWN, BASE_ENEMIES, WAVE_SCALE, SPAWN_INTERVAL,
-    TILE_SIZE,
+    TILE_SIZE, PLAYER_HP,
 )
 from game.world.map_data import SPAWN_ZONES
 
@@ -17,22 +17,23 @@ class WaveManager:
     STATE_ACTIVE    = "active"
     STATE_CLEAR     = "clear"
 
-    def __init__(self, tilemap, pathfinder, player,
+    def __init__(self, tilemap, pathfinder, players,
                  enemy_group, pickup_group, all_groups):
-        self.tilemap       = tilemap
-        self.pathfinder    = pathfinder
-        self.player        = player
-        self.enemy_group   = enemy_group
-        self.pickup_group  = pickup_group
-        self.all_groups    = all_groups
+        self.tilemap      = tilemap
+        self.pathfinder   = pathfinder
+        # Accepte un joueur unique (retro-compat) ou une liste
+        self.players      = players if isinstance(players, list) else [players]
+        self.enemy_group  = enemy_group
+        self.pickup_group = pickup_group
+        self.all_groups   = all_groups
 
         self.wave_number     = 0
         self.state           = self.STATE_WAITING
-        self.cooldown_timer  = 3.0   # delai avant la premiere vague
+        self.cooldown_timer  = 3.0
         self.spawn_timer     = 0.0
-        self.enemies_queue:  list[str] = []
+        self.enemies_queue: list[str] = []
 
-        self.total_this_wave = 0
+        self.total_this_wave  = 0
         self.killed_this_wave = 0
 
     # ------------------------------------------------------------------
@@ -55,6 +56,7 @@ class WaveManager:
                 self.state = self.STATE_CLEAR
                 self.cooldown_timer = WAVE_COOLDOWN
                 self._drop_pickups()
+                self._respawn_dead_players()
 
         elif self.state == self.STATE_CLEAR:
             self.cooldown_timer -= dt
@@ -72,7 +74,6 @@ class WaveManager:
         self.spawn_timer = 0.0
 
     def _build_composition(self, count: int) -> list[str]:
-        """Repartit les ennemis selon la vague."""
         types = []
         for _ in range(count):
             r = random.random()
@@ -87,15 +88,25 @@ class WaveManager:
     def _spawn_enemy(self, enemy_type: str):
         from game.entities.enemy import SoldierEnemy, OfficerEnemy, HeavyEnemy
 
-        # Choisir un spawn loin du joueur
-        p_pos = pygame.Vector2(self.player.rect.center)
+        # Choisir un spawn loin de TOUS les joueurs vivants
+        alive_positions = [
+            pygame.Vector2(p.rect.center)
+            for p in self.players
+            if getattr(p, "state", "alive") == "alive"
+        ]
+
         valid = []
         for col, row in SPAWN_ZONES:
             spawn_world = pygame.Vector2(col * TILE_SIZE + TILE_SIZE // 2,
                                         row * TILE_SIZE + TILE_SIZE // 2)
             if self.tilemap.is_solid(col, row):
                 continue
-            if (spawn_world - p_pos).length() > 350:
+            # Doit etre loin de tous les joueurs vivants
+            far_enough = all(
+                (spawn_world - p_pos).length() > 350
+                for p_pos in alive_positions
+            ) if alive_positions else True
+            if far_enough:
                 valid.append(spawn_world)
 
         if not valid:
@@ -107,7 +118,6 @@ class WaveManager:
             return
 
         pos = random.choice(valid)
-
         cls_map = {
             "soldier": SoldierEnemy,
             "officer": OfficerEnemy,
@@ -115,18 +125,15 @@ class WaveManager:
         }
         cls = cls_map.get(enemy_type, SoldierEnemy)
         cls(pos.x, pos.y,
-            self.pathfinder, self.player, self.tilemap,
+            self.pathfinder, self.players, self.tilemap,
             groups=self.all_groups + (self.enemy_group,))
 
     def _drop_pickups(self):
-        """Pose des ramassages d'armes apres la vague."""
         from game.entities.pickup import WeaponPickup
         count = min(3, 1 + self.wave_number // 2)
         placed = set()
-
         for _ in range(count):
             wn = random.choice(_WAVE_PICKUPS)
-            # Trouver tuile praticable aleatoire
             for _attempt in range(40):
                 col = random.randint(2, self.tilemap.cols - 3)
                 row = random.randint(2, self.tilemap.rows - 3)
@@ -136,6 +143,14 @@ class WaveManager:
                     wy = row * TILE_SIZE + TILE_SIZE // 2
                     WeaponPickup(wx, wy, wn, groups=(self.pickup_group,))
                     break
+
+    def _respawn_dead_players(self):
+        """Respawn les joueurs morts au debut de la prochaine manche."""
+        from game.world.map_data import PLAYER_START
+        for p in self.players:
+            if getattr(p, "state", "alive") == "dead":
+                px, py = PLAYER_START
+                p.respawn(float(px), float(py))
 
     # ------------------------------------------------------------------
     @property

@@ -15,9 +15,11 @@ class Bullet(pygame.sprite.Sprite):
                  vel_x: float, vel_y: float,
                  damage: int, owner: str,
                  bullet_range: float,
+                 owner_id=None,   # player_id qui a tire (None = ennemi)
                  groups=()):
         super().__init__(*groups)
-        self.owner    = owner   # "player" ou "enemy"
+        self.owner    = owner
+        self.owner_id = owner_id
         self.damage   = damage
         self.velocity = pygame.Vector2(vel_x, vel_y)
         self.pos      = pygame.Vector2(x, y)
@@ -31,13 +33,24 @@ class Bullet(pygame.sprite.Sprite):
         self.image = self._surf
         self.rect  = self.image.get_rect(center=(int(x), int(y)))
 
-    def update(self, dt: float, tilemap, enemy_group=None, player=None):
+    def update(self, dt: float, tilemap, enemy_group=None, players=None):
+        """
+        players : liste de Player ou joueur unique (retro-compat).
+        """
+        # Normaliser players en liste
+        if players is None:
+            players_list = []
+        elif isinstance(players, list):
+            players_list = players
+        else:
+            players_list = [players]
+
         move = self.velocity * dt
         self.pos += move
         self.traveled += move.length()
         self.rect.center = (int(self.pos.x), int(self.pos.y))
 
-        # Collision avec tuile
+        # Collision tuile
         from game.systems.collision import bullet_hits_tile
         if bullet_hits_tile(self, tilemap):
             self.kill()
@@ -48,16 +61,22 @@ class Bullet(pygame.sprite.Sprite):
             self.kill()
             return
 
-        # Collision avec cibles
+        # Collision avec ennemis (balle joueur)
         if self.owner == "player" and enemy_group:
             for enemy in enemy_group:
                 if self.rect.colliderect(enemy.rect):
                     enemy.take_damage(self.damage)
-                    # +10 pts pour chaque balle qui touche
-                    if player:
-                        player.add_score(POINTS_HIT)
-                        player.add_score_popup(f"+{POINTS_HIT}", self.pos)
-                    # Marquer suppression pour les ennemis proches
+                    # Score : chercher le joueur proprietaire
+                    if players_list:
+                        owner_player = next(
+                            (p for p in players_list
+                             if getattr(p, "player_id", -1) == self.owner_id),
+                            players_list[0] if players_list else None
+                        )
+                        if owner_player and owner_player.state == "alive":
+                            owner_player.add_score(POINTS_HIT)
+                            owner_player.add_score_popup(f"+{POINTS_HIT}", self.pos)
+                    # Suppression ennemis proches
                     for e in enemy_group:
                         if e != enemy:
                             d = (pygame.Vector2(e.rect.center) - self.pos).length()
@@ -66,12 +85,14 @@ class Bullet(pygame.sprite.Sprite):
                     self.kill()
                     return
 
-        elif self.owner == "enemy" and player:
-            if self.rect.colliderect(player.rect):
-                player.take_damage(self.damage)
-                # Suppression du joueur (pas d'effet mecanique, visuel seulement)
-                self.kill()
-                return
+        # Collision avec joueurs (balle ennemi)
+        elif self.owner == "enemy" and players_list:
+            for player in players_list:
+                if getattr(player, "state", "alive") == "alive":
+                    if self.rect.colliderect(player.rect):
+                        player.take_damage(self.damage)
+                        self.kill()
+                        return
 
     def draw(self, surface: pygame.Surface, camera):
         sx, sy = camera.apply_pos(self.pos.x, self.pos.y)
