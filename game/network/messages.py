@@ -58,15 +58,17 @@ def make_input(player_id: int, tick: int, dx: float, dy: float,
 def make_game_state(tick: int, players_data: list, enemies_data: list,
                     bullets_data: list, grenades_data: list,
                     pickups_data: list, wave_info: dict,
-                    upgrade_levels: dict | None = None) -> dict:
+                    upgrade_levels: dict | None = None,
+                    explosions_data: list | None = None) -> dict:
     msg = {
-        "type":    MSG_GAME_STATE,
-        "tick":    tick,
-        "players": players_data,
-        "enemies": enemies_data,
-        "bullets": bullets_data,
-        "grenades": grenades_data,
-        "pickups": pickups_data,
+        "type":       MSG_GAME_STATE,
+        "tick":       tick,
+        "players":    players_data,
+        "enemies":    enemies_data,
+        "bullets":    bullets_data,
+        "grenades":   grenades_data,
+        "pickups":    pickups_data,
+        "explosions": explosions_data or [],
         "upgrade_levels": upgrade_levels or {},
     }
     msg.update(wave_info)
@@ -144,4 +146,14 @@ def serialize_pickup(pk) -> dict:
         "weapon_name": pk.weapon_name,
         "x":           round(pk.pos.x, 1),
         "y":           round(pk.pos.y, 1),
+    }
+
+
+def serialize_explosion(e) -> dict:
+    return {
+        "x":            round(e.pos.x, 1),
+        "y":            round(e.pos.y, 1),
+        "blast_radius": e.blast_radius,
+        "timer":        round(e.timer, 3),
+        "duration":     e.ANIM_DURATION,
     }

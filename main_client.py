@@ -122,6 +122,18 @@ class ClientGame:
             _base.blit(_icon, (4, 4))
             self._pickup_surfs[_wname] = _base
 
+        # Surface pré-calculée pour les grenades (même rendu que Grenade.draw serveur)
+        _gr = 7   # Grenade.RADIUS
+        self._grenade_surf = pygame.Surface((_gr * 2, _gr * 2), pygame.SRCALPHA)
+        pygame.draw.circle(self._grenade_surf, (60, 60, 60),    (_gr, _gr), _gr)
+        pygame.draw.circle(self._grenade_surf, (100, 100, 100), (_gr, _gr), _gr, 2)
+
+        # Données distantes : explosions (absentes avant ce correctif)
+        self.remote_explosions: list[dict] = []
+
+        # Score popups locaux (générés quand le score augmente entre deux snapshots)
+        self._score_popups: list[dict] = []
+
     # ------------------------------------------------------------------
     def run(self, owns_pygame: bool = False):
         """Boucle principale.
@@ -159,6 +171,10 @@ class ClientGame:
             if self.state not in (STATE_PAUSED, STATE_SETTINGS, STATE_LOBBY):
                 self._send_input()
             self.upgrade_machine.update(dt)
+            # Décompte des score popups locaux
+            for _pp in self._score_popups:
+                _pp["timer"] -= dt
+            self._score_popups = [_pp for _pp in self._score_popups if _pp["timer"] > 0]
             # Heartbeat : garder la connexion active même en pause
             self._heartbeat_timer += dt
             if self._heartbeat_timer >= 5.0:
@@ -239,12 +255,16 @@ class ClientGame:
                     self._quit_requested = True
 
     def _apply_state(self, state: dict):
-        self.remote_players  = {p["player_id"]: p for p in state.get("players", [])}
-        self.remote_enemies  = state.get("enemies", [])
-        self.remote_bullets  = state.get("bullets", [])
-        self.remote_grenades = state.get("grenades", [])
-        self.remote_pickups  = state.get("pickups", [])
-        self.wave_info       = {k: state[k] for k in
+        # Score avant mise à jour → pour détecter les kills
+        old_score = self.local_state.get("score", 0)
+
+        self.remote_players    = {p["player_id"]: p for p in state.get("players", [])}
+        self.remote_enemies    = state.get("enemies", [])
+        self.remote_bullets    = state.get("bullets", [])
+        self.remote_grenades   = state.get("grenades", [])
+        self.remote_pickups    = state.get("pickups", [])
+        self.remote_explosions = state.get("explosions", [])
+        self.wave_info         = {k: state[k] for k in
             ("wave_number", "wave_state", "wave_countdown", "enemies_remaining")
             if k in state}
         # Sync upgrade levels depuis serveur
@@ -253,8 +273,19 @@ class ClientGame:
             self.upgrade_machine.upgrade_levels.update(srv_levels)
         if self.player_id in self.remote_players:
             self.local_state = self.remote_players[self.player_id]
-            # Sync weapon index depuis serveur
-            self._local_weapon_idx = self.local_state.get("weapon_idx", 0)
+            # Score popup local quand le score augmente (kill ennemi)
+            new_score = self.local_state.get("score", 0)
+            if new_score > old_score:
+                diff = new_score - old_score
+                self._score_popups.append({
+                    "text":  f"+{diff}",
+                    "x":     float(self.local_state.get("x", SCREEN_W / 2)),
+                    "y":     float(self.local_state.get("y", SCREEN_H / 2)),
+                    "timer": 1.0,
+                })
+            # NE PAS écraser _local_weapon_idx depuis le serveur :
+            # le retour serveur confirme l'arme mais l'affichage reste instantané
+            # (voir _draw_client_hud qui utilise self._local_weapon_idx directement)
 
     def _update_camera(self):
         px = float(self.local_state.get("x", SCREEN_W / 2))
@@ -382,21 +413,49 @@ class ClientGame:
         for e in self.remote_enemies:
             self._draw_remote_enemy(e)
 
-        # Grenades
+        # Grenades (surface pré-rendue identique à Grenade.draw serveur)
         for g in self.remote_grenades:
             sx, sy = self.camera.apply_pos(g["x"], g["y"])
-            pygame.draw.circle(self.screen, (60, 60, 60), (int(sx), int(sy)), 6)
-            # Compte a rebours
+            r = self._grenade_surf.get_rect(center=(int(sx), int(sy)))
+            self.screen.blit(self._grenade_surf, r)
             fuse = g.get("fuse_remaining", 0)
             if fuse > 0:
-                t = self._font_small.render(f"{fuse:.1f}", True, (255, 160, 30))
-                self.screen.blit(t, (int(sx) - t.get_width()//2, int(sy) - 16))
+                fuse_surf = self._font_small.render(f"{fuse:.1f}", True, (255, 160, 30))
+                self.screen.blit(fuse_surf, (int(sx) - fuse_surf.get_width()//2, int(sy) - 16))
+
+        # Explosions (reçues du serveur depuis ce correctif)
+        for expl in self.remote_explosions:
+            _ex = expl["x"]; _ey = expl["y"]
+            _er = int(expl.get("blast_radius", 110))
+            _et = expl.get("timer", 0.0)
+            _ed = expl.get("duration", 0.5)
+            _progress = min(1.0, _et / max(0.001, _ed))
+            _cur_r    = max(4, int(_er * (0.3 + 0.7 * _progress)))
+            _alpha    = int(200 * (1.0 - _progress))
+            _inner_r  = max(1, _cur_r - 15)
+            _esx, _esy = self.camera.apply_pos(_ex, _ey)
+            _surf_sz   = _er * 2 + 8
+            _expl_surf = pygame.Surface((_surf_sz, _surf_sz), pygame.SRCALPHA)
+            _cx = _cy = _surf_sz // 2
+            pygame.draw.circle(_expl_surf, (255, 160, 30, _alpha), (_cx, _cy), _cur_r)
+            pygame.draw.circle(_expl_surf, (255, 240, 150, _alpha), (_cx, _cy), _inner_r)
+            self.screen.blit(_expl_surf, (int(_esx) - _cx, int(_esy) - _cy))
 
         # Balles
         for b in self.remote_bullets:
             sx, sy = self.camera.apply_pos(b["x"], b["y"])
             col = COL_BULLET_P if b.get("owner") == "player" else COL_BULLET_E
             pygame.draw.circle(self.screen, col, (int(sx), int(sy)), 3)
+
+        # Score popups flottants (même logique que hud.draw_score_popups serveur)
+        for _pp in self._score_popups:
+            _psx, _psy = self.camera.apply_pos(_pp["x"], _pp["y"])
+            _elapsed   = 1.0 - _pp["timer"]
+            _psy      -= _elapsed * 50           # monte au fil du temps
+            _palpha    = int(min(255, _pp["timer"] / 0.4 * 255))
+            _pp_surf   = self._font_med.render(_pp["text"], True, COL_YELLOW)
+            _pp_surf.set_alpha(_palpha)
+            self.screen.blit(_pp_surf, (int(_psx) - _pp_surf.get_width() // 2, int(_psy)))
 
         # HUD depuis etat serveur
         if self.local_state:
@@ -640,7 +699,8 @@ class ClientGame:
 
         # ── Inventaire en bas au centre ────────────────────────────────
         ammo   = p.get("ammo", {})
-        aw_idx = p.get("weapon_idx", 0)
+        # _local_weapon_idx = retour immédiat au changement (pas d'attente snapshot 16ms)
+        aw_idx = self._local_weapon_idx
         slot_w = 60
         total_w = len(WEAPON_ORDER) * (slot_w + 6) - 6
         sx0 = SCREEN_W//2 - total_w//2

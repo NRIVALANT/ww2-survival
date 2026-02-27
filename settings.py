@@ -139,7 +139,7 @@ STATE_WAVE_CLEAR = "wave_clear"
 # --- Reseau ---
 NET_PORT           = 8765
 NET_MAX_PLAYERS    = 4
-NET_BROADCAST_RATE = 30      # snapshots/s envoyes aux clients (33ms entre chaque)
+NET_BROADCAST_RATE = 60      # snapshots/s envoyes aux clients (16ms entre chaque)
 NET_TIMEOUT        = 10.0    # secondes avant kick client silencieux
 
 # --- Revive (coop) ---

@@ -30,7 +30,7 @@ from game.network.messages import (
     MSG_INPUT, MSG_GAME_STATE, MSG_START_GAME,
     encode, make_game_state, make_lobby_state,
     serialize_player, serialize_enemy, serialize_bullet,
-    serialize_grenade, serialize_pickup,
+    serialize_grenade, serialize_pickup, serialize_explosion,
 )
 
 
@@ -480,11 +480,12 @@ class ServerGame:
             return
         self._broadcast_timer = 0.0
 
-        players_data  = [serialize_player(p) for p in self.players.values()]
-        enemies_data  = [serialize_enemy(e) for e in self.enemy_group]
-        bullets_data  = [serialize_bullet(b) for b in self.bullet_group]
-        grenades_data = [serialize_grenade(g) for g in self.grenade_group]
-        pickups_data  = [serialize_pickup(pk) for pk in self.pickup_group]
+        players_data    = [serialize_player(p)    for p  in self.players.values()]
+        enemies_data    = [serialize_enemy(e)     for e  in self.enemy_group]
+        bullets_data    = [serialize_bullet(b)    for b  in self.bullet_group]
+        grenades_data   = [serialize_grenade(g)   for g  in self.grenade_group]
+        pickups_data    = [serialize_pickup(pk)   for pk in self.pickup_group]
+        explosions_data = [serialize_explosion(ex) for ex in self.explosion_group]
         wave_info = {
             "wave_number":       self.wave_manager.wave_number,
             "wave_state":        self.wave_manager.state,
@@ -497,6 +498,7 @@ class ServerGame:
             bullets_data, grenades_data,
             pickups_data, wave_info,
             upgrade_levels=dict(self.upgrade_machine.upgrade_levels),
+            explosions_data=explosions_data,
         )
         self.server.broadcast(encode(snapshot))
 
