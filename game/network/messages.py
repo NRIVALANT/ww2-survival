@@ -86,7 +86,7 @@ def serialize_player(p) -> dict:
     rt = wdata.get("reload_time", 1.5) if wdata else 1.5
     reload_progress = 0.0
     if p.is_reloading and rt > 0:
-        reload_progress = round(1.0 - p.reload_timer / rt, 3)
+        reload_progress = max(0.0, min(1.0, round(1.0 - p.reload_timer / rt, 3)))
 
     return {
         "player_id":      p.player_id,
@@ -128,6 +128,7 @@ def serialize_bullet(b) -> dict:
         "vel_x":    round(b.velocity.x, 1),
         "vel_y":    round(b.velocity.y, 1),
         "owner":    b.owner,
+        "weapon":   getattr(b, "weapon", "pistol"),
     }
 
 

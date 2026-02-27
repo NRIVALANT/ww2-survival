@@ -1,5 +1,6 @@
 # hud.py - Interface utilisateur en jeu
 import pygame
+from game.entities.pickup import _make_weapon_icon
 from settings import (
     SCREEN_W, SCREEN_H, WEAPON_ORDER, WEAPONS,
     COL_HUD_BG, COL_HP_BAR, COL_HP_LOW, COL_WHITE, COL_BLACK,
@@ -127,19 +128,24 @@ class HUD:
             pygame.draw.rect(surface, border_col, (sx, sy, slot_w, slot_h),
                              2 if is_active else 1, border_radius=4)
 
-            # Nom de l'arme
-            name_txt = self._font_small.render(wname.upper(), True,
+            # Numero de slot (1-4) en haut a gauche
+            slot_num = self._font_small.render(str(i + 1), True,
                                                COL_YELLOW if is_active else COL_GREY)
-            surface.blit(name_txt, (sx + slot_w // 2 - name_txt.get_width() // 2,
-                                    sy + 6))
+            surface.blit(slot_num, (sx + 4, sy + 3))
 
-            # Munitions
+            # Icone de l'arme centree dans le slot
+            icon = _make_weapon_icon(wname, 32)
+            icon_x = sx + slot_w // 2 - 16
+            icon_y = sy + slot_h // 2 - 16 - 4
+            surface.blit(icon, (icon_x, icon_y))
+
+            # Munitions en bas
             ammo = player.ammo.get(wname, 0)
             max_ammo = WEAPONS[wname].get("max_ammo", 0)
             ammo_col = COL_WHITE if ammo > max_ammo * 0.3 else COL_RED
-            ammo_txt = self._font_med.render(f"{ammo}/{max_ammo}", True, ammo_col)
+            ammo_txt = self._font_small.render(f"{ammo}/{max_ammo}", True, ammo_col)
             surface.blit(ammo_txt, (sx + slot_w // 2 - ammo_txt.get_width() // 2,
-                                    sy + slot_h - 24))
+                                    sy + slot_h - 18))
 
             # Indicateur rechargement
             if is_active and player.is_reloading:
@@ -330,3 +336,119 @@ class HUD:
             elif state == "dead":
                 dead_txt = self._font_small.render("MORT (prochaine vague)", True, COL_GREY)
                 surface.blit(dead_txt, (start_x + 6, y + 22))
+
+    def draw_from_state(self, surface: pygame.Surface, local_state: dict,
+                        wave_info: dict, local_weapon_idx: int,
+                        screen_w: int = SCREEN_W, screen_h: int = SCREEN_H):
+        """HUD complet depuis les données sérialisées (ClientGame)."""
+        p = local_state
+
+        # ── Panneau joueur local en haut à gauche ──────────────────────
+        panel_x = 12
+        panel_y = 30
+        panel_w = 220
+        panel_h = 68
+
+        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        bg.fill((*COL_HUD_BG, 160))
+        surface.blit(bg, (panel_x, panel_y))
+        pid   = int(p.get("player_id", 1))
+        color = PLAYER_COLORS[(pid - 1) % len(PLAYER_COLORS)]
+        pygame.draw.rect(surface, color,
+                         (panel_x, panel_y, panel_w, panel_h), 2, border_radius=3)
+
+        pname      = str(p.get("player_name", f"P{pid}"))
+        score      = int(p.get("score", 0))
+        name_surf  = self._font_small.render(pname, True, color)
+        score_surf = self._font_small.render(f"{score:,} pts", True, COL_YELLOW)
+        surface.blit(name_surf,  (panel_x + 6, panel_y + 5))
+        surface.blit(score_surf, (panel_x + panel_w - score_surf.get_width() - 6, panel_y + 5))
+
+        hp    = int(p.get("hp", 100))
+        maxhp = int(p.get("max_hp", 100))
+        bar_w, bar_h = panel_w - 12, 16
+        bx, by = panel_x + 6, panel_y + 26
+        pygame.draw.rect(surface, COL_DARK_GREY, (bx, by, bar_w, bar_h), border_radius=3)
+        ratio = hp / max(1, maxhp)
+        col   = COL_HP_BAR if ratio > 0.4 else COL_HP_LOW
+        pygame.draw.rect(surface, col, (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
+        pygame.draw.rect(surface, COL_WHITE, (bx, by, bar_w, bar_h), 1, border_radius=3)
+        hp_txt = self._font_small.render(f"HP  {hp}/{maxhp}", True, COL_WHITE)
+        surface.blit(hp_txt, (bx + bar_w // 2 - hp_txt.get_width() // 2, by + 1))
+
+        # Score centré en haut
+        score_big = self._font_big.render(f"SCORE  {score:,}", True, COL_WHITE)
+        surface.blit(score_big, (screen_w // 2 - score_big.get_width() // 2, 10))
+
+        # ── Vague en haut à droite ─────────────────────────────────────
+        wn   = wave_info.get("wave_number", 0)
+        wrem = wave_info.get("enemies_remaining", 0)
+        wst  = wave_info.get("wave_state", "")
+        wcd  = float(wave_info.get("wave_countdown", 0))
+        wave_surf = self._font_big.render(f"VAGUE  {wn}", True, COL_YELLOW)
+        surface.blit(wave_surf, (screen_w - wave_surf.get_width() - 20, 10))
+        if wst in ("active", "spawning"):
+            rem_txt = self._font_med.render(f"Ennemis: {wrem}", True, COL_GREY)
+            surface.blit(rem_txt, (screen_w - rem_txt.get_width() - 20, 42))
+        elif wst in ("clear", "waiting"):
+            cd_txt = self._font_med.render(
+                f"Prochaine vague: {int(wcd)+1}s", True, (100, 220, 100))
+            surface.blit(cd_txt, (screen_w - cd_txt.get_width() - 20, 42))
+
+        # ── Alliés à droite ──────────────────────────────────────────────
+        allies = p.get("all_players", [])
+        my_id  = p.get("player_id", -1)
+        self.draw_other_players_hud_from_dicts(surface, allies, my_id)
+
+        # ── Inventaire en bas au centre ────────────────────────────────
+        ammo         = p.get("ammo", {})
+        is_reloading = p.get("is_reloading", False)
+        reload_prog  = float(p.get("reload_progress", 0.0))
+        slot_w, slot_h = 64, 64
+        gap     = 8
+        total_w = len(WEAPON_ORDER) * (slot_w + gap) - gap
+        sx0 = screen_w // 2 - total_w // 2
+        sy0 = screen_h - slot_h - 12
+
+        for i, wn2 in enumerate(WEAPON_ORDER):
+            sx = sx0 + i * (slot_w + gap)
+            is_active = (i == local_weapon_idx)
+            bg2    = (60, 55, 40) if is_active else (30, 28, 22)
+            border = COL_YELLOW  if is_active else COL_DARK_GREY
+            pygame.draw.rect(surface, bg2, (sx, sy0, slot_w, slot_h), border_radius=4)
+            pygame.draw.rect(surface, border, (sx, sy0, slot_w, slot_h),
+                             2 if is_active else 1, border_radius=4)
+            slot_num = self._font_small.render(str(i + 1), True,
+                                               COL_YELLOW if is_active else COL_GREY)
+            surface.blit(slot_num, (sx + 4, sy0 + 3))
+            icon = _make_weapon_icon(wn2, 32)
+            surface.blit(icon, (sx + slot_w // 2 - 16, sy0 + slot_h // 2 - 16 - 4))
+            cur = ammo.get(wn2, 0)
+            mx2 = WEAPONS[wn2].get("max_ammo", 0)
+            col2 = COL_WHITE if cur > mx2 * 0.3 else COL_RED
+            a_surf = self._font_small.render(f"{cur}/{mx2}", True, col2)
+            surface.blit(a_surf, (sx + slot_w // 2 - a_surf.get_width() // 2,
+                                  sy0 + slot_h - 18))
+            if is_active and is_reloading:
+                pygame.draw.rect(surface, (80, 80, 220),
+                                 (sx, sy0 + slot_h - 4, int(slot_w * reload_prog), 4))
+
+        # ── Texte rechargement ──────────────────────────────────────────
+        if is_reloading:
+            rld = self._font_big.render("RECHARGEMENT...", True, (80, 160, 255))
+            surface.blit(rld, (screen_w // 2 - rld.get_width() // 2, screen_h // 2 + 60))
+            bar_w2 = 200
+            bx3 = screen_w // 2 - bar_w2 // 2
+            by3 = screen_h // 2 + 90
+            pygame.draw.rect(surface, COL_DARK_GREY, (bx3, by3, bar_w2, 6))
+            pygame.draw.rect(surface, (80, 160, 255),
+                             (bx3, by3, int(bar_w2 * reload_prog), 6))
+
+        # ── Prompt à terre ────────────────────────────────────────────
+        pstate = p.get("state", "alive")
+        if pstate == "down":
+            dt3 = float(p.get("down_timer", 0))
+            down_txt = self._font_big.render(
+                f"A TERRE - {int(dt3)}s avant elimination", True, (220, 80, 30))
+            surface.blit(down_txt, (screen_w // 2 - down_txt.get_width() // 2,
+                                    screen_h // 2 - 30))

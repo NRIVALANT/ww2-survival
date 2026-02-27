@@ -15,20 +15,38 @@ class Bullet(pygame.sprite.Sprite):
                  vel_x: float, vel_y: float,
                  damage: int, owner: str,
                  bullet_range: float,
-                 owner_id=None,   # player_id qui a tire (None = ennemi)
+                 owner_id=None,         # player_id qui a tire (None = ennemi)
+                 weapon: str = "pistol", # type d'arme pour le rendu
                  groups=()):
         super().__init__(*groups)
         self.owner    = owner
         self.owner_id = owner_id
+        self.weapon   = weapon
         self.damage   = damage
         self.velocity = pygame.Vector2(vel_x, vel_y)
         self.pos      = pygame.Vector2(x, y)
         self.max_range = bullet_range
         self.traveled  = 0.0
 
-        color = COL_BULLET_P if owner == "player" else COL_BULLET_E
+        # Couleur et forme selon l'arme
+        if owner == "player":
+            if weapon == "pistol":
+                color = (255, 230, 60)    # jaune dore
+            elif weapon == "rifle":
+                color = (220, 235, 255)   # blanc bleu acier
+            elif weapon == "smg":
+                color = (255, 145, 30)    # orange
+            else:
+                color = COL_BULLET_P
+        else:
+            color = COL_BULLET_E
+
         angle = math.degrees(math.atan2(-vel_y, vel_x))
-        base_surf = _make_bullet_surf(color)
+        # Rifle : balle allongee (9x2), autres : compacte (5x3)
+        if weapon == "rifle" and owner == "player":
+            base_surf = _make_bullet_surf(color, length=9, width=2)
+        else:
+            base_surf = _make_bullet_surf(color, length=5, width=3)
         self._surf = pygame.transform.rotate(base_surf, angle)
         self.image = self._surf
         self.rect  = self.image.get_rect(center=(int(x), int(y)))

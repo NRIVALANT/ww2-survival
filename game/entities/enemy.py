@@ -14,13 +14,67 @@ from game.systems.collision import move_and_collide
 _enemy_counter = itertools.count(1)   # IDs uniques globaux
 
 
-def _make_enemy_surf(color: tuple, size: int = 30) -> pygame.Surface:
+def _make_enemy_surf(color: tuple, size: int = 32,
+                     enemy_type: str = "soldier") -> pygame.Surface:
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
     cx, cy = size // 2, size // 2
-    pygame.draw.circle(surf, color, (cx, cy), size // 3)
-    hc = (max(0, color[0] - 40), max(0, color[1] - 30), max(0, color[2] - 30))
-    pygame.draw.ellipse(surf, hc, (cx - 8, cy - 12, 16, 10))
-    pygame.draw.rect(surf, (40, 40, 40), (cx + 2, cy - 2, size // 2 - 4, 4))
+    s = size / 32.0   # facteur d'echelle
+    face_col = (190, 155, 115)
+    helm_col  = (max(0, color[0]-60), max(0, color[1]-55), max(0, color[2]-45))
+
+    if enemy_type == "soldier":
+        # Corps
+        pygame.draw.ellipse(surf, color,
+                            (int(cx - 8*s), int(cy - 2*s), int(16*s), int(11*s)))
+        # Tete
+        pygame.draw.circle(surf, face_col, (int(cx), int(cy - 5*s)), int(5*s))
+        # Stahlhelm : bord large + dome bombe
+        pygame.draw.ellipse(surf, helm_col,
+                            (int(cx - 9*s), int(cy - 11*s), int(18*s), int(5*s)))
+        pygame.draw.ellipse(surf, helm_col,
+                            (int(cx - 6*s), int(cy - 14*s), int(12*s), int(7*s)))
+        # Arme (fusil standard)
+        pygame.draw.rect(surf, (55, 50, 45),
+                         (int(cx + 5*s), int(cy - 1*s), int(11*s), int(3*s)))
+
+    elif enemy_type == "officer":
+        # Corps plus fin
+        pygame.draw.ellipse(surf, color,
+                            (int(cx - 6*s), int(cy - 2*s), int(12*s), int(9*s)))
+        # Tete
+        pygame.draw.circle(surf, face_col, (int(cx), int(cy - 5*s)), int(4*s))
+        # Casquette plate a visiere
+        cap_col = (max(0, color[0]-40), max(0, color[1]-40), max(0, color[2]-40))
+        pygame.draw.ellipse(surf, cap_col,
+                            (int(cx - 5*s), int(cy - 11*s), int(10*s), int(4*s)))
+        # Visiere qui depasse vers la droite (direction de visee)
+        pygame.draw.polygon(surf, (30, 25, 20), [
+            (int(cx + 4*s), int(cy - 10*s)),
+            (int(cx + 9*s), int(cy - 8*s)),
+            (int(cx + 4*s), int(cy - 8*s)),
+        ])
+        # Pistolet court
+        pygame.draw.rect(surf, (55, 50, 45),
+                         (int(cx + 4*s), int(cy - 1*s), int(7*s), int(3*s)))
+
+    elif enemy_type == "heavy":
+        # Corps tres epais
+        pygame.draw.ellipse(surf, color,
+                            (int(cx - 10*s), int(cy - 2*s), int(20*s), int(13*s)))
+        # Tete large
+        pygame.draw.circle(surf, face_col, (int(cx), int(cy - 5*s)), int(6*s))
+        # Casque lourd avec protege-nuque
+        pygame.draw.ellipse(surf, helm_col,
+                            (int(cx - 11*s), int(cy - 12*s), int(22*s), int(6*s)))
+        pygame.draw.ellipse(surf, helm_col,
+                            (int(cx - 8*s), int(cy - 16*s), int(16*s), int(9*s)))
+        # Arme lourde (longue + epaisse)
+        pygame.draw.rect(surf, (45, 42, 38),
+                         (int(cx + 7*s), int(cy - 2*s), int(13*s), int(4*s)))
+        pygame.draw.rect(surf, (65, 58, 50),
+                         (int(cx + 3*s), int(cy - 4*s), int(6*s), int(7*s)),
+                         border_radius=1)
+
     return surf
 
 
@@ -55,7 +109,9 @@ class Enemy(pygame.sprite.Sprite):
         # IA
         self.ai = AIController(self, self.players, tilemap, pathfinder)
 
-        self._base_surf = _make_enemy_surf(self.color, 30)
+        _size_map = {"soldier": 32, "officer": 26, "heavy": 40}
+        _size = _size_map.get(enemy_type, 32)
+        self._base_surf = _make_enemy_surf(self.color, _size, enemy_type)
         self.image      = self._base_surf
         self.rect       = self.image.get_rect(center=(int(x), int(y)))
 

@@ -9,7 +9,7 @@ from settings import (
     SCREEN_W, SCREEN_H, FPS, TITLE,
     STATE_PLAYING, STATE_PAUSED, STATE_GAMEOVER, STATE_MENU, STATE_SETTINGS,
     STATE_NETWORK_MENU, STATE_LOBBY,
-    PLAYER_SPEED, WEAPONS, WEAPON_ORDER, PLAYER_COLORS,
+    PLAYER_SPEED, WEAPON_ORDER, PLAYER_COLORS,
     NET_PORT, NET_BROADCAST_RATE,
     REVIVE_RANGE, REVIVE_TIME,
     UPGRADE_MACHINE_TILE, KEYBINDS,
@@ -447,6 +447,7 @@ class ServerGame:
                         owner="player",
                         owner_id=player.player_id,
                         bullet_range=wdata.get("bullet_range", 600),
+                        weapon=aw,
                         groups=(self.bullet_group,),
                     )
                     player.ammo[aw] -= 1
@@ -491,6 +492,7 @@ class ServerGame:
             "wave_state":        self.wave_manager.state,
             "wave_countdown":    round(self.wave_manager.clear_countdown, 1),
             "enemies_remaining": self.wave_manager.enemies_remaining,
+            "total_this_wave":   self.wave_manager.total_this_wave,
         }
         snapshot = make_game_state(
             self._tick,

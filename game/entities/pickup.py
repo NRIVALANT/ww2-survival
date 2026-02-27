@@ -20,26 +20,102 @@ def _make_weapon_icon(weapon_name: str, size: int = 28) -> pygame.Surface:
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
     color = WEAPON_COLORS.get(weapon_name, COL_PICKUP)
     cx, cy = size // 2, size // 2
+    s = size / 28.0   # facteur d'echelle
 
     if weapon_name == "pistol":
-        pygame.draw.rect(surf, color, (4, cy - 3, size - 8, 6), border_radius=2)
-        pygame.draw.rect(surf, color, (4, cy + 1, 6, 8), border_radius=1)
-        pygame.draw.rect(surf, (140, 140, 160), (size - 12, cy - 2, 10, 4))
+        # Canon fin qui depasse a droite
+        barrel_col = (200, 200, 210)
+        pygame.draw.rect(surf, barrel_col,
+                         (int(cx - 1*s), int(cy - 4*s), int(13*s), int(3*s)),
+                         border_radius=1)
+        # Slide / corps principal
+        pygame.draw.rect(surf, color,
+                         (int(4*s), int(cy - 3*s), int(13*s), int(6*s)),
+                         border_radius=2)
+        # Crosse (grip) vers le bas
+        grip_col = (150, 130, 160)
+        pygame.draw.rect(surf, grip_col,
+                         (int(5*s), int(cy + 2*s), int(6*s), int(7*s)),
+                         border_radius=2)
+        # Gachette
+        pygame.draw.rect(surf, (220, 200, 200),
+                         (int(11*s), int(cy + 2*s), int(2*s), int(4*s)),
+                         border_radius=1)
+        # Ligne de detail sur le slide
+        pygame.draw.rect(surf, (210, 210, 225),
+                         (int(8*s), int(cy - 2*s), int(7*s), int(1*s)))
 
     elif weapon_name == "rifle":
-        pygame.draw.rect(surf, color, (2, cy - 3, size - 4, 5), border_radius=1)
-        pygame.draw.rect(surf, color, (2, cy - 1, 8, 7), border_radius=1)
-        pygame.draw.rect(surf, (90, 70, 40), (10, cy - 3, size - 14, 5))
+        stock_col = (100, 75, 45)
+        metal_col = (120, 110, 100)
+        # Crosse (bois) a gauche
+        pygame.draw.rect(surf, stock_col,
+                         (int(1*s), int(cy - 4*s), int(9*s), int(8*s)),
+                         border_radius=2)
+        # Corps central
+        pygame.draw.rect(surf, color,
+                         (int(6*s), int(cy - 3*s), int(10*s), int(6*s)),
+                         border_radius=1)
+        # Canon long a droite
+        pygame.draw.rect(surf, metal_col,
+                         (int(14*s), int(cy - 2*s), int(12*s), int(4*s)),
+                         border_radius=1)
+        # Poignee pistolet sous corps
+        pygame.draw.rect(surf, stock_col,
+                         (int(9*s), int(cy + 2*s), int(5*s), int(6*s)),
+                         border_radius=1)
+        # Chargeur amovible
+        pygame.draw.rect(surf, (90, 85, 80),
+                         (int(12*s), int(cy + 1*s), int(4*s), int(4*s)),
+                         border_radius=1)
 
     elif weapon_name == "smg":
-        pygame.draw.rect(surf, color, (2, cy - 4, size - 4, 7), border_radius=2)
-        pygame.draw.rect(surf, (110, 90, 50), (4, cy - 4, 8, 6))
-        pygame.draw.rect(surf, (140, 120, 70), (cx - 2, cy + 2, 5, 8), border_radius=1)
+        metal_col = (110, 100, 90)
+        # Corps compact
+        pygame.draw.rect(surf, color,
+                         (int(3*s), int(cy - 4*s), int(16*s), int(7*s)),
+                         border_radius=2)
+        # Canon court
+        pygame.draw.rect(surf, metal_col,
+                         (int(18*s), int(cy - 2*s), int(7*s), int(3*s)),
+                         border_radius=1)
+        # Crosse repliable (arriere)
+        pygame.draw.rect(surf, (130, 110, 60),
+                         (int(1*s), int(cy - 2*s), int(4*s), int(4*s)),
+                         border_radius=1)
+        # Chargeur vertical (box magazine)
+        pygame.draw.rect(surf, (120, 105, 70),
+                         (int(8*s), int(cy + 2*s), int(5*s), int(7*s)),
+                         border_radius=2)
+        # Ligne de detail corps
+        pygame.draw.rect(surf, (170, 150, 90),
+                         (int(4*s), int(cy - 1*s), int(12*s), int(1*s)))
 
     elif weapon_name == "grenade":
-        pygame.draw.circle(surf, color, (cx, cy + 2), 9)
-        pygame.draw.rect(surf, (60, 80, 50), (cx - 2, cy - 10, 4, 8))
-        pygame.draw.circle(surf, (50, 90, 50), (cx, cy + 2), 9, 2)
+        detail_col = (50, 90, 45)
+        metal_col  = (160, 150, 100)
+        # Corps ovale
+        pygame.draw.ellipse(surf, color,
+                            (int(cx - 7*s), int(cy - 5*s),
+                             int(14*s), int(11*s)))
+        # Contour
+        pygame.draw.ellipse(surf, detail_col,
+                            (int(cx - 7*s), int(cy - 5*s),
+                             int(14*s), int(11*s)), max(1, int(1.5*s)))
+        # Bandes horizontales de segment
+        for dy_off in (-2, 0, 2):
+            pygame.draw.line(surf, detail_col,
+                             (int(cx - 6*s), int(cy + dy_off*s)),
+                             (int(cx + 6*s), int(cy + dy_off*s)),
+                             max(1, int(s)))
+        # Col metallique en haut
+        pygame.draw.rect(surf, metal_col,
+                         (int(cx - 2*s), int(cy - 8*s), int(5*s), int(4*s)),
+                         border_radius=1)
+        # Anneau (pin)
+        pygame.draw.circle(surf, metal_col,
+                           (int(cx - 3*s), int(cy - 8*s)),
+                           max(1, int(2*s)), max(1, int(s)))
 
     return surf
 

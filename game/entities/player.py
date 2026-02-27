@@ -12,17 +12,59 @@ from settings import (
 from game.systems.collision import move_and_collide
 
 
-def _make_player_surf(color: tuple, size: int = 32) -> pygame.Surface:
+def _make_player_surf(color: tuple, size: int = 40) -> pygame.Surface:
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
     cx, cy = size // 2, size // 2
-    # Corps
-    pygame.draw.circle(surf, color, (cx, cy), size // 3)
-    # Casque (plus fonce)
-    hc = (max(0, color[0] - 40), max(0, color[1] - 40), max(0, color[2] - 40))
-    pygame.draw.ellipse(surf, hc, (cx - 9, cy - 13, 18, 12))
-    # Arme (pointe vers la droite = angle 0)
-    pygame.draw.rect(surf, (50, 50, 50),
-                     (cx + 2, cy - 2, size // 2 - 4, 4))
+    s = size / 40.0   # facteur d'echelle
+
+    # Corps ovale (blouson/veste militaire)
+    pygame.draw.ellipse(surf, color,
+                        (int(cx - 9*s), int(cy - 2*s), int(18*s), int(13*s)))
+    # Jambes (deux petits demi-cercles en bas)
+    leg_col = (max(0, color[0]-30), max(0, color[1]-30), max(0, color[2]-30))
+    pygame.draw.ellipse(surf, leg_col,
+                        (int(cx - 8*s), int(cy + 6*s), int(7*s), int(6*s)))
+    pygame.draw.ellipse(surf, leg_col,
+                        (int(cx + 1*s), int(cy + 6*s), int(7*s), int(6*s)))
+
+    # Tete / visage (couleur peau)
+    face_col = (210, 175, 130)
+    pygame.draw.circle(surf, face_col, (int(cx), int(cy - 6*s)), int(6*s))
+
+    # Casque M1 — bord plat + dome arrondi + reflet
+    helm_col = (max(0, color[0]-60), max(0, color[1]-55), max(0, color[2]-40))
+    # Bord large et plat
+    pygame.draw.ellipse(surf, helm_col,
+                        (int(cx - 9*s), int(cy - 13*s), int(18*s), int(6*s)))
+    # Dome
+    pygame.draw.ellipse(surf, helm_col,
+                        (int(cx - 7*s), int(cy - 17*s), int(14*s), int(9*s)))
+    # Reflet highlight sur le dome
+    hl = (min(255, helm_col[0]+55), min(255, helm_col[1]+55), min(255, helm_col[2]+55))
+    pygame.draw.ellipse(surf, hl,
+                        (int(cx - 3*s), int(cy - 16*s), int(5*s), int(3*s)))
+
+    # Bras gauche
+    arm_col = color
+    pygame.draw.rect(surf, arm_col,
+                     (int(cx - 14*s), int(cy - 1*s), int(7*s), int(4*s)),
+                     border_radius=2)
+    # Bras droit (cote arme)
+    pygame.draw.rect(surf, arm_col,
+                     (int(cx + 7*s), int(cy - 1*s), int(7*s), int(4*s)),
+                     border_radius=2)
+
+    # Arme : corps + canon (pointe vers la droite = angle 0)
+    gun_body = (75, 65, 55)
+    gun_metal = (100, 95, 85)
+    # Corps de l'arme
+    pygame.draw.rect(surf, gun_body,
+                     (int(cx + 5*s), int(cy - 3*s), int(7*s), int(5*s)),
+                     border_radius=1)
+    # Canon
+    pygame.draw.rect(surf, gun_metal,
+                     (int(cx + 11*s), int(cy - 2*s), int(8*s), int(3*s)))
+
     return surf
 
 
@@ -60,7 +102,7 @@ class Player(pygame.sprite.Sprite):
         self.is_reloading      = False
         self.iframe_timer      = 0.0
 
-        self._base_surf = _make_player_surf(self.color, 32)
+        self._base_surf = _make_player_surf(self.color, 40)
         self.facing_angle = 0.0
 
         self.image = self._base_surf
@@ -174,6 +216,7 @@ class Player(pygame.sprite.Sprite):
             owner="player",
             owner_id=self.player_id,
             bullet_range=wdata.get("bullet_range", 600),
+            weapon=self.active_weapon,
             groups=(bullet_group,),
         )
         self.ammo[self.active_weapon] -= 1
