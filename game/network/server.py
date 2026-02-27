@@ -37,6 +37,8 @@ class GameServer:
 
         # asyncio.Queue pour le broadcast (créée dans le thread asyncio)
         self._async_bcast_queue: asyncio.Queue | None = None
+        # asyncio.Event pour arrêt propre (créé dans le thread asyncio)
+        self._stop_event: asyncio.Event | None = None
         # Event signalant que la queue asyncio est prête (évite race condition)
         self._queue_ready = threading.Event()
 
@@ -143,15 +145,23 @@ class GameServer:
                 continue
 
     async def _run(self):
-        # Créer la asyncio.Queue dans le bon loop, puis signaler qu'elle est prête
+        # Créer la asyncio.Queue et l'Event d'arrêt dans le bon loop
         self._async_bcast_queue = asyncio.Queue()
+        self._stop_event = asyncio.Event()
         self._queue_ready.set()
         self._running = True
         broadcast_task = asyncio.create_task(self._broadcast_loop())
-        async with ws_serve(self._handler, "0.0.0.0", NET_PORT) as server:
-            # Tourner indéfiniment
-            await asyncio.get_running_loop().create_future()
-        broadcast_task.cancel()
+        try:
+            # reuse_address=True : le port est réutilisable immédiatement après fermeture
+            async with ws_serve(self._handler, "0.0.0.0", NET_PORT, reuse_address=True):
+                # Attendre le signal d'arrêt propre (vs create_future interrompu brutalement)
+                await self._stop_event.wait()
+        finally:
+            broadcast_task.cancel()
+            try:
+                await asyncio.gather(broadcast_task, return_exceptions=True)
+            except Exception:
+                pass
 
     def start_in_thread(self, wait_ready: bool = True):
         """Démarre le serveur dans un thread daemon.
@@ -173,7 +183,12 @@ class GameServer:
     def stop(self):
         self._running = False
         if self._loop and not self._loop.is_closed():
-            self._loop.call_soon_threadsafe(self._loop.stop)
+            if self._stop_event is not None:
+                # Arrêt propre : signale l'Event asyncio → ws_serve se ferme normalement
+                self._loop.call_soon_threadsafe(self._stop_event.set)
+            else:
+                # Fallback si stop() appelé avant que _run() ait créé l'Event
+                self._loop.call_soon_threadsafe(self._loop.stop)
 
     # ------------------------------------------------------------------
     def broadcast(self, msg_str: str):

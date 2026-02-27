@@ -8,6 +8,7 @@ from settings import (
     WEAPON_ORDER, WEAPONS, PLAYER_COLORS,
     DOWN_TIMEOUT,
     COL_BULLET_P, COL_BULLET_E, COL_YELLOW, COL_WHITE, COL_GREY, COL_RED,
+    COL_BLACK,
     UPGRADE_MACHINE_TILE, KEYBINDS, NET_PORT,
     STATE_MENU, STATE_SETTINGS, STATE_NETWORK_MENU, STATE_PLAYING,
     STATE_PAUSED, STATE_GAMEOVER, STATE_LOBBY,
@@ -108,6 +109,18 @@ class ClientGame:
         self.menus = Menus()
         self._font_small = pygame.font.SysFont("Arial", 12)
         self._font_med   = pygame.font.SysFont("Arial", 18, bold=True)
+
+        # Surfaces pré-calculées pour les pickups (même rendu que le serveur)
+        from game.entities.pickup import _make_weapon_icon
+        self._pickup_surfs: dict[str, pygame.Surface] = {}
+        for _wname in WEAPON_ORDER:
+            _icon = _make_weapon_icon(_wname, 28)
+            _size = 36
+            _base = pygame.Surface((_size, _size), pygame.SRCALPHA)
+            pygame.draw.circle(_base, (*COL_YELLOW, 180), (_size // 2, _size // 2), _size // 2)
+            pygame.draw.circle(_base, (*COL_BLACK,  120), (_size // 2, _size // 2), _size // 2, 2)
+            _base.blit(_icon, (4, 4))
+            self._pickup_surfs[_wname] = _base
 
     # ------------------------------------------------------------------
     def run(self, owns_pygame: bool = False):
@@ -340,12 +353,23 @@ class ClientGame:
         self.screen.fill((80, 72, 55))
         self.tilemap.draw(self.screen, self.camera.offset)
 
-        # Pickups
+        # Pickups (rendu identique au serveur : icône + effet bob sinusoïdal)
+        _t = pygame.time.get_ticks() / 1000.0
         for pk in self.remote_pickups:
             sx, sy = self.camera.apply_pos(pk["x"], pk["y"])
-            pygame.draw.circle(self.screen, COL_YELLOW, (int(sx), int(sy)), 8)
-            label = self._font_small.render(pk["weapon_name"].upper(), True, COL_YELLOW)
-            self.screen.blit(label, (int(sx) - label.get_width()//2, int(sy) - 18))
+            wname = pk.get("weapon_name", "pistol")
+            surf  = self._pickup_surfs.get(wname)
+            if surf:
+                phase = (pk["x"] + pk["y"]) * 0.01   # phase unique par position
+                bob_y = math.sin((_t + phase) * 2.5 * math.pi * 2) * 3.0
+                r = surf.get_rect(center=(int(sx), int(sy + bob_y)))
+                self.screen.blit(surf, r)
+                label = self._font_small.render(wname.upper(), True, COL_YELLOW)
+                self.screen.blit(label, (r.centerx - label.get_width() // 2, r.top - 14))
+            else:
+                pygame.draw.circle(self.screen, COL_YELLOW, (int(sx), int(sy)), 8)
+                label = self._font_small.render(wname.upper(), True, COL_YELLOW)
+                self.screen.blit(label, (int(sx) - label.get_width()//2, int(sy) - 18))
 
         # Machine d'amélioration
         self.upgrade_machine.draw(self.screen, self.camera)

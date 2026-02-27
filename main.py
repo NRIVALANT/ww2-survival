@@ -66,7 +66,7 @@ class Game:
         self.wave_manager = WaveManager(
             tilemap        = self.tilemap,
             pathfinder     = self.pathfinder,
-            player         = self.player,
+            players        = [self.player],
             enemy_group    = self.enemy_group,
             pickup_group   = self.pickup_group,
             all_groups     = (self.all_sprites,),

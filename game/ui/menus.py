@@ -376,10 +376,6 @@ class Menus:
                      "⬆⬇ naviguer  |  ENTRÉE confirmer  |  ESPACE jouer directement",
                      (70, 68, 58), SCREEN_H - 32, shadow=False)
 
-        # ESPACE → jouer immédiatement (compatibilité ancienne)
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_SPACE]:
-            result = STATE_PLAYING
         return result
 
     # ------------------------------------------------------------------
@@ -611,10 +607,13 @@ class Menus:
     # ------------------------------------------------------------------
     def handle_gameover_event(self, event: pygame.event.Event) -> None:
         """
-        Gère les événements MOUSEBUTTONDOWN pour le bouton "RETOUR AU MENU" du game over.
+        Gère les événements pour le bouton "RETOUR AU MENU" du game over.
         Stocke le résultat dans _gameover_result, consommé par draw_game_over().
         """
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_KP_ENTER):
+                self._gameover_result = STATE_MENU
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             btn_w, btn_h = 300, 52
             btn_x = SCREEN_W // 2 - btn_w // 2
             btn_y = SCREEN_H - 140
@@ -693,10 +692,6 @@ class Menus:
             result = self._gameover_result
             self._gameover_result = None
             return result
-
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_SPACE] or keys[pygame.K_RETURN]:
-            return STATE_MENU
         return None
 
     # ------------------------------------------------------------------
