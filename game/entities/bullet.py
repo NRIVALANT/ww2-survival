@@ -52,16 +52,7 @@ class Bullet(pygame.sprite.Sprite):
         self.rect  = self.image.get_rect(center=(int(x), int(y)))
 
     def update(self, dt: float, tilemap, enemy_group=None, players=None):
-        """
-        players : liste de Player ou joueur unique (retro-compat).
-        """
-        # Normaliser players en liste
-        if players is None:
-            players_list = []
-        elif isinstance(players, list):
-            players_list = players
-        else:
-            players_list = [players]
+        players_list = players or []
 
         move = self.velocity * dt
         self.pos += move

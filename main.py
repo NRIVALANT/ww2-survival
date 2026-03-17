@@ -160,10 +160,7 @@ class Game:
     def _update(self, dt: float):
         self.menus.update(dt)
 
-        if self.state == STATE_MENU:
-            pass
-
-        elif self.state == STATE_PLAYING:
+        if self.state == STATE_PLAYING:
             keys   = pygame.key.get_pressed()
             mbtns  = pygame.mouse.get_pressed()
             mpos   = pygame.mouse.get_pos()
@@ -186,7 +183,7 @@ class Game:
             # Ennemis
             dead_enemies = []
             for enemy in list(self.enemy_group):
-                enemy.update(dt, self.tilemap, self.player,
+                enemy.update(dt, self.tilemap, [self.player],
                              self.bullet_group, self.explosion_group)
                 if not enemy.alive:
                     kill_pts = enemy.score_value
@@ -196,15 +193,15 @@ class Game:
 
             # Balles
             for bullet in list(self.bullet_group):
-                bullet.update(dt, self.tilemap, self.enemy_group, self.player)
+                bullet.update(dt, self.tilemap, self.enemy_group, [self.player])
 
             # Grenades
             for grenade in list(self.grenade_group):
-                grenade.update(dt, self.tilemap, self.enemy_group, self.player)
+                grenade.update(dt, self.tilemap, self.enemy_group, [self.player])
 
             # Explosions
             for expl in list(self.explosion_group):
-                expl.update(dt, self.enemy_group, self.player)
+                expl.update(dt, self.enemy_group, [self.player])
 
             # Ramassages
             for pickup in list(self.pickup_group):
@@ -231,8 +228,6 @@ class Game:
             # Camera
             self.camera.update(self.player.rect)
 
-        elif self.state == STATE_GAMEOVER:
-            pass
 
     # ------------------------------------------------------------------
     def _draw(self):

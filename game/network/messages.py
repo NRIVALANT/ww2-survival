@@ -5,7 +5,6 @@ import json
 # Client -> Serveur
 MSG_JOIN        = "join"
 MSG_INPUT       = "input"
-MSG_REVIVE_REQ  = "revive_req"
 MSG_UPGRADE_REQ = "upgrade_req"
 
 # Serveur -> Client
@@ -13,8 +12,6 @@ MSG_WELCOME        = "welcome"
 MSG_GAME_STATE     = "game_state"
 MSG_PLAYER_JOINED  = "player_joined"
 MSG_PLAYER_LEFT    = "player_left"
-MSG_WAVE_START     = "wave_start"
-MSG_WAVE_CLEAR     = "wave_clear"
 MSG_GAME_OVER      = "game_over"
 MSG_PLAYER_DOWN    = "player_down"
 MSG_PLAYER_REVIVED = "player_revived"

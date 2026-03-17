@@ -67,23 +67,27 @@ class HUD:
 
         # Barre HP
         bar_w, bar_h = panel_w - 12, 16
-        bx, by = panel_x + 6, panel_y + 26
-        pygame.draw.rect(surface, COL_DARK_GREY, (bx, by, bar_w, bar_h), border_radius=3)
-        ratio = player.hp / max(1, player.max_hp)
-        col = COL_HP_BAR if ratio > 0.4 else COL_HP_LOW
-        pygame.draw.rect(surface, col,
-                         (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
-        pygame.draw.rect(surface, COL_WHITE, (bx, by, bar_w, bar_h), 1, border_radius=3)
-        hp_txt = self._font_small.render(f"HP  {player.hp}/{player.max_hp}", True, COL_WHITE)
-        surface.blit(hp_txt, (bx + bar_w // 2 - hp_txt.get_width() // 2, by + 1))
+        self._draw_hp_bar(surface, panel_x + 6, panel_y + 26,
+                          bar_w, bar_h, player.hp, player.max_hp,
+                          f"HP  {player.hp}/{player.max_hp}")
 
         # Score centré en haut
         score_big = self._font_big.render(f"SCORE  {score:,}", True, COL_WHITE)
         surface.blit(score_big, (SCREEN_W // 2 - score_big.get_width() // 2, 10))
 
-    def _draw_health(self, surface: pygame.Surface, player):
-        """Compatibilite - appeler _draw_player_panel a la place."""
-        self._draw_player_panel(surface, player)
+    def _draw_hp_bar(self, surface: pygame.Surface,
+                     bx: int, by: int, bar_w: int, bar_h: int,
+                     hp: int, max_hp: int, label: str | None = None):
+        """Barre HP HUD : fond gris, fill coloré, bordure blanche, texte optionnel."""
+        ratio = max(0.0, hp / max(1, max_hp))
+        col   = COL_HP_BAR if ratio > 0.4 else COL_HP_LOW
+        pygame.draw.rect(surface, COL_DARK_GREY, (bx, by, bar_w, bar_h), border_radius=3)
+        pygame.draw.rect(surface, col,
+                         (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
+        pygame.draw.rect(surface, COL_WHITE, (bx, by, bar_w, bar_h), 1, border_radius=3)
+        if label:
+            txt = self._font_small.render(label, True, COL_WHITE)
+            surface.blit(txt, (bx + bar_w // 2 - txt.get_width() // 2, by + 1))
 
     def _draw_wave_info(self, surface: pygame.Surface, wave_manager):
         # Vague actuelle
@@ -104,10 +108,6 @@ class HUD:
             cd_txt = self._font_med.render(
                 f"Prochaine vague: {cd}s", True, (100, 220, 100))
             surface.blit(cd_txt, (SCREEN_W - cd_txt.get_width() - 20, 52))
-
-    def _draw_score(self, surface: pygame.Surface, player):
-        """Compatibilite - le score est desormais dans _draw_player_panel."""
-        pass
 
     def _draw_inventory(self, surface: pygame.Surface, player):
         slot_w, slot_h = 64, 64
@@ -176,93 +176,11 @@ class HUD:
                            SCREEN_H // 2 + 60))
 
     # ------------------------------------------------------------------
-    def draw_other_players_hud(self, surface: pygame.Surface, others: list):
-        """Dessine les mini-HUDs des joueurs alliés (HP, état, nom)."""
+    def draw_other_players_hud(self, surface: pygame.Surface,
+                               others: list[dict], my_player_id: int = -1):
+        """Dessine les mini-HUDs des joueurs alliés depuis une liste de dicts sérialisés."""
         if not others:
             return
-
-        panel_w = 180
-        panel_h = 52
-        gap     = 8
-        start_x = SCREEN_W - panel_w - 12
-        start_y = 60   # sous l'indicateur de connexion
-
-        for i, player in enumerate(others):
-            y = start_y + i * (panel_h + gap)
-
-            # Fond semi-transparent
-            bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-            state = getattr(player, "state", "alive")
-            if state == "down":
-                bg.fill((120, 30, 30, 180))
-            elif state == "dead":
-                bg.fill((50, 50, 50, 180))
-            else:
-                bg.fill((*COL_HUD_BG, 160))
-            surface.blit(bg, (start_x, y))
-
-            # Bordure couleur du joueur
-            color = getattr(player, "color", COL_WHITE)
-            pygame.draw.rect(surface, color,
-                             (start_x, y, panel_w, panel_h), 2, border_radius=3)
-
-            # Nom du joueur
-            name = getattr(player, "player_name", "Allié")
-            name_surf = self._font_small.render(name[:14], True, color)
-            surface.blit(name_surf, (start_x + 6, y + 4))
-
-            if state == "alive":
-                # Barre HP
-                hp     = getattr(player, "hp", 0)
-                max_hp = getattr(player, "max_hp", 100)
-                bar_w  = panel_w - 12
-                bar_x  = start_x + 6
-                bar_y  = y + 24
-                pygame.draw.rect(surface, COL_DARK_GREY,
-                                 (bar_x, bar_y, bar_w, 12), border_radius=3)
-                ratio  = max(0.0, hp / max(1, max_hp))
-                hp_col = COL_HP_BAR if ratio > 0.4 else COL_HP_LOW
-                pygame.draw.rect(surface, hp_col,
-                                 (bar_x, bar_y, int(bar_w * ratio), 12),
-                                 border_radius=3)
-                pygame.draw.rect(surface, COL_WHITE,
-                                 (bar_x, bar_y, bar_w, 12), 1, border_radius=3)
-                hp_txt = self._font_small.render(f"{hp}/{max_hp}", True, COL_WHITE)
-                surface.blit(hp_txt, (bar_x + bar_w // 2 - hp_txt.get_width() // 2,
-                                      bar_y))
-
-            elif state == "down":
-                # Compte à rebours de revive + barre de progression
-                down_timer  = getattr(player, "down_timer", 0.0)
-                rev_progress = getattr(player, "revive_progress", 0.0)
-
-                status_txt = self._font_small.render(
-                    f"A TERRE  {int(down_timer)+1}s", True, COL_RED)
-                surface.blit(status_txt, (start_x + 6, y + 22))
-
-                # Barre de progression de relève
-                if rev_progress > 0:
-                    bar_w = panel_w - 12
-                    bar_x = start_x + 6
-                    bar_y = y + 38
-                    pygame.draw.rect(surface, COL_DARK_GREY,
-                                     (bar_x, bar_y, bar_w, 8), border_radius=2)
-                    pygame.draw.rect(surface, (80, 200, 120),
-                                     (bar_x, bar_y, int(bar_w * min(1.0, rev_progress)), 8),
-                                     border_radius=2)
-
-            elif state == "dead":
-                dead_txt = self._font_small.render("MORT (prochaine vague)", True, COL_GREY)
-                surface.blit(dead_txt, (start_x + 6, y + 22))
-
-    def draw_other_players_hud_from_dicts(self, surface: pygame.Surface,
-                                          others: list[dict], my_player_id: int):
-        """Version pour le ClientGame : alliés = liste de dicts sérialisés."""
-        if not others:
-            return
-
-        # Importer ici pour éviter la dépendance circulaire
-        from settings import PLAYER_COLORS
 
         panel_w = 180
         panel_h = 52
@@ -270,14 +188,15 @@ class HUD:
         start_x = SCREEN_W - panel_w - 12
         start_y = 60
 
-        others_filtered = [p for p in others if p.get("player_id") != my_player_id]
-
-        for i, pdata in enumerate(others_filtered):
+        for i, pdata in enumerate(p for p in others
+                                  if p.get("player_id") != my_player_id):
             y = start_y + i * (panel_h + gap)
 
             state = pdata.get("state", "alive")
+            pid   = pdata.get("player_id", 0)
+            color = PLAYER_COLORS[(pid - 1) % len(PLAYER_COLORS)]
 
-            # Fond
+            # Fond semi-transparent
             bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
             if state == "down":
                 bg.fill((120, 30, 30, 180))
@@ -287,13 +206,9 @@ class HUD:
                 bg.fill((*COL_HUD_BG, 160))
             surface.blit(bg, (start_x, y))
 
-            # Couleur du joueur
-            pid   = pdata.get("player_id", 0)
-            color = PLAYER_COLORS[(pid - 1) % len(PLAYER_COLORS)]
             pygame.draw.rect(surface, color,
                              (start_x, y, panel_w, panel_h), 2, border_radius=3)
 
-            # Nom
             name = str(pdata.get("player_name", f"Joueur {pid}"))[:14]
             name_surf = self._font_small.render(name, True, color)
             surface.blit(name_surf, (start_x + 6, y + 4))
@@ -301,21 +216,9 @@ class HUD:
             if state == "alive":
                 hp     = int(pdata.get("hp", 0))
                 max_hp = int(pdata.get("max_hp", 100))
-                bar_w  = panel_w - 12
-                bar_x  = start_x + 6
-                bar_y  = y + 24
-                pygame.draw.rect(surface, COL_DARK_GREY,
-                                 (bar_x, bar_y, bar_w, 12), border_radius=3)
-                ratio  = max(0.0, hp / max(1, max_hp))
-                hp_col = COL_HP_BAR if ratio > 0.4 else COL_HP_LOW
-                pygame.draw.rect(surface, hp_col,
-                                 (bar_x, bar_y, int(bar_w * ratio), 12),
-                                 border_radius=3)
-                pygame.draw.rect(surface, COL_WHITE,
-                                 (bar_x, bar_y, bar_w, 12), 1, border_radius=3)
-                hp_txt = self._font_small.render(f"{hp}/{max_hp}", True, COL_WHITE)
-                surface.blit(hp_txt, (bar_x + bar_w // 2 - hp_txt.get_width() // 2,
-                                      bar_y))
+                self._draw_hp_bar(surface, start_x + 6, y + 24,
+                                  panel_w - 12, 12, hp, max_hp,
+                                  f"{hp}/{max_hp}")
 
             elif state == "down":
                 down_timer   = float(pdata.get("down_timer", 0.0))
@@ -366,15 +269,9 @@ class HUD:
 
         hp    = int(p.get("hp", 100))
         maxhp = int(p.get("max_hp", 100))
-        bar_w, bar_h = panel_w - 12, 16
-        bx, by = panel_x + 6, panel_y + 26
-        pygame.draw.rect(surface, COL_DARK_GREY, (bx, by, bar_w, bar_h), border_radius=3)
-        ratio = hp / max(1, maxhp)
-        col   = COL_HP_BAR if ratio > 0.4 else COL_HP_LOW
-        pygame.draw.rect(surface, col, (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
-        pygame.draw.rect(surface, COL_WHITE, (bx, by, bar_w, bar_h), 1, border_radius=3)
-        hp_txt = self._font_small.render(f"HP  {hp}/{maxhp}", True, COL_WHITE)
-        surface.blit(hp_txt, (bx + bar_w // 2 - hp_txt.get_width() // 2, by + 1))
+        self._draw_hp_bar(surface, panel_x + 6, panel_y + 26,
+                          panel_w - 12, 16, hp, maxhp,
+                          f"HP  {hp}/{maxhp}")
 
         # Score centré en haut
         score_big = self._font_big.render(f"SCORE  {score:,}", True, COL_WHITE)
@@ -398,7 +295,7 @@ class HUD:
         # ── Alliés à droite ──────────────────────────────────────────────
         allies = p.get("all_players", [])
         my_id  = p.get("player_id", -1)
-        self.draw_other_players_hud_from_dicts(surface, allies, my_id)
+        self.draw_other_players_hud(surface, allies, my_id)
 
         # ── Inventaire en bas au centre ────────────────────────────────
         ammo         = p.get("ammo", {})

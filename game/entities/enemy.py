@@ -78,6 +78,34 @@ def _make_enemy_surf(color: tuple, size: int = 32,
     return surf
 
 
+def draw_enemy_at(surface: pygame.Surface, sx: int, sy: int,
+                  base_surf: pygame.Surface, facing_angle: float,
+                  hp: int, max_hp: int, ai_state: str):
+    """Rendu partagé d'un ennemi (serveur solo et client réseau)."""
+    rotated = pygame.transform.rotate(base_surf, -facing_angle)
+    surface.blit(rotated, rotated.get_rect(center=(sx, sy)))
+
+    # Barre de vie
+    bar_w, bar_h = 28, 4
+    bx = sx - bar_w // 2
+    by = sy - 20
+    pygame.draw.rect(surface, (180, 30, 30), (bx, by, bar_w, bar_h))
+    ratio = hp / max(1, max_hp)
+    g = int(200 * ratio)
+    pygame.draw.rect(surface, (max(0, 200 - g), min(200, g), 20),
+                     (bx, by, int(bar_w * ratio), bar_h))
+
+    # Indicateur d'état IA
+    if ai_state != AI_PATROL:
+        col = {
+            "alert": (240, 200, 0),
+            "chase": (255, 100, 0),
+            "shoot": (255, 30, 30),
+            "cover": (50, 150, 255),
+        }.get(ai_state, (200, 200, 200))
+        pygame.draw.circle(surface, col, (sx, sy - 24), 3)
+
+
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, x: float, y: float, enemy_type: str,
                  pathfinder, players, tilemap, groups=()):
@@ -103,8 +131,7 @@ class Enemy(pygame.sprite.Sprite):
         self.suppression_timer = 0.0
         self.alive             = True
 
-        # players peut etre un joueur unique (retro-compat) ou une liste
-        self.players = players if isinstance(players, list) else [players]
+        self.players = players
 
         # IA
         self.ai = AIController(self, self.players, tilemap, pathfinder)
@@ -120,13 +147,8 @@ class Enemy(pygame.sprite.Sprite):
         if not self.alive:
             return
 
-        # Mettre a jour la liste de joueurs de l'IA
-        if isinstance(players, list):
-            self.players = players
-            self.ai.players = players
-        else:
-            self.players = [players]
-            self.ai.players = [players]
+        self.players = players
+        self.ai.players = players
 
         self.suppression_timer = max(0.0, self.suppression_timer - dt)
         self.fire_timer        = max(0.0, self.fire_timer - dt)
@@ -196,32 +218,10 @@ class Enemy(pygame.sprite.Sprite):
 
     # ------------------------------------------------------------------
     def draw(self, surface: pygame.Surface, camera):
-        rotated = pygame.transform.rotate(self._base_surf, -self.facing_angle)
-        sx, sy  = camera.apply_pos(self.pos.x, self.pos.y)
-        r       = rotated.get_rect(center=(int(sx), int(sy)))
-        surface.blit(rotated, r)
-
-        # Barre de vie
-        bar_w = 28
-        bar_h = 4
-        bx = int(sx) - bar_w // 2
-        by = int(sy) - 20
-        pygame.draw.rect(surface, (180, 30, 30), (bx, by, bar_w, bar_h))
-        ratio = self.hp / self.max_hp
-        g = int(200 * ratio)
-        pygame.draw.rect(surface, (200 - g, g, 20),
-                         (bx, by, int(bar_w * ratio), bar_h))
-
-        # Indicateur d'etat
-        state = self.ai.state
-        if state != AI_PATROL:
-            col = {
-                "alert": (240, 200, 0),
-                "chase": (255, 100, 0),
-                "shoot": (255, 30, 30),
-                "cover": (50, 150, 255),
-            }.get(state, (200, 200, 200))
-            pygame.draw.circle(surface, col, (int(sx), int(sy) - 24), 3)
+        sx, sy = camera.apply_pos(self.pos.x, self.pos.y)
+        draw_enemy_at(surface, int(sx), int(sy),
+                      self._base_surf, self.facing_angle,
+                      self.hp, self.max_hp, self.ai.state)
 
 
 # ---- Sous-classes ---------------------------------------------------

@@ -3,37 +3,6 @@ import pygame
 from settings import TILE_SIZE, MAP_W, MAP_H
 
 
-class SpatialHash:
-    """Hachage spatial pour acceleration des collisions O(n)."""
-    CELL = 96
-
-    def __init__(self):
-        self.table: dict[tuple, list] = {}
-
-    def clear(self):
-        self.table.clear()
-
-    def insert(self, entity):
-        for cell in self._cells(entity.rect):
-            self.table.setdefault(cell, []).append(entity)
-
-    def query(self, rect: pygame.Rect) -> list:
-        result = []
-        seen = set()
-        for cell in self._cells(rect):
-            for ent in self.table.get(cell, []):
-                if id(ent) not in seen:
-                    seen.add(id(ent))
-                    result.append(ent)
-        return result
-
-    def _cells(self, rect: pygame.Rect):
-        x0 = rect.left  // self.CELL
-        y0 = rect.top   // self.CELL
-        x1 = rect.right  // self.CELL
-        y1 = rect.bottom // self.CELL
-        return [(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)]
-
 
 def _get_nearby_tiles(rect: pygame.Rect, tilemap) -> list[tuple[int, int]]:
     """Renvoie les (col, row) de tuiles proches du rect."""

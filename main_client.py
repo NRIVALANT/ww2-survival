@@ -14,7 +14,8 @@ from settings import (
 )
 from game.entities.upgrade_machine import UpgradeMachine
 from game.entities.player import _make_player_surf
-from game.entities.enemy  import _make_enemy_surf
+from game.entities.enemy   import _make_enemy_surf, draw_enemy_at
+from game.entities.grenade import draw_explosion_at
 from game.world.tilemap   import TileMap
 from game.world.camera    import Camera
 from game.world.map_data  import MAP_DATA
@@ -22,7 +23,9 @@ from game.ui.hud   import HUD
 from game.ui.menus import Menus
 from game.network.client   import GameClient
 from game.network.messages import (
-    MSG_GAME_STATE, MSG_LOBBY_STATE, MSG_START_GAME, make_input,
+    MSG_GAME_STATE, MSG_LOBBY_STATE, MSG_START_GAME,
+    MSG_GAME_OVER, MSG_UPGRADE_RESULT, MSG_ERROR,
+    make_input,
 )
 
 
@@ -242,7 +245,7 @@ class ClientGame:
                 pygame.mouse.set_visible(False)
             elif t == MSG_GAME_STATE:
                 self._apply_state(msg)
-            elif t == "game_over":
+            elif t == MSG_GAME_OVER:
                 self.state = STATE_GAMEOVER
                 self._gameover_wave = msg.get("wave_reached", 0)
                 self._gameover_scores = sorted(
@@ -250,10 +253,10 @@ class ClientGame:
                      for p in msg.get("scores", [])],
                     key=lambda x: x["score"], reverse=True
                 )
-            elif t == "upgrade_result":
+            elif t == MSG_UPGRADE_RESULT:
                 if msg.get("player_id") == self.player_id:
                     self.upgrade_machine._set_message(msg.get("message", ""))
-            elif t == "error":
+            elif t == MSG_ERROR:
                 reason = msg.get("reason", "erreur inconnue")
                 print(f"Erreur réseau : {reason}")
                 if reason == "disconnected_by_server":
@@ -430,23 +433,12 @@ class ClientGame:
                 fuse_surf = self._font_small.render(f"{fuse:.1f}", True, (255, 160, 30))
                 self.screen.blit(fuse_surf, (int(sx) - fuse_surf.get_width()//2, int(sy) - 16))
 
-        # Explosions (reçues du serveur depuis ce correctif)
+        # Explosions (reçues du serveur)
         for expl in self.remote_explosions:
-            _ex = expl["x"]; _ey = expl["y"]
-            _er = int(expl.get("blast_radius", 110))
-            _et = expl.get("timer", 0.0)
-            _ed = expl.get("duration", 0.5)
-            _progress = min(1.0, _et / max(0.001, _ed))
-            _cur_r    = max(4, int(_er * (0.3 + 0.7 * _progress)))
-            _alpha    = int(200 * (1.0 - _progress))
-            _inner_r  = max(1, _cur_r - 15)
-            _esx, _esy = self.camera.apply_pos(_ex, _ey)
-            _surf_sz   = _er * 2 + 8
-            _expl_surf = pygame.Surface((_surf_sz, _surf_sz), pygame.SRCALPHA)
-            _cx = _cy = _surf_sz // 2
-            pygame.draw.circle(_expl_surf, (255, 160, 30, _alpha), (_cx, _cy), _cur_r)
-            pygame.draw.circle(_expl_surf, (255, 240, 150, _alpha), (_cx, _cy), _inner_r)
-            self.screen.blit(_expl_surf, (int(_esx) - _cx, int(_esy) - _cy))
+            esx, esy = self.camera.apply_pos(expl["x"], expl["y"])
+            er       = int(expl.get("blast_radius", 110))
+            progress = min(1.0, expl.get("timer", 0.0) / max(0.001, expl.get("duration", 0.5)))
+            draw_explosion_at(self.screen, int(esx), int(esy), er, progress)
 
         # Balles (couleur et forme selon l'arme)
         for b in self.remote_bullets:
@@ -577,37 +569,12 @@ class ClientGame:
     def _draw_remote_enemy(self, e: dict):
         sx, sy = self.camera.apply_pos(e["x"], e["y"])
         etype  = e.get("enemy_type", "soldier")
-
-        # Couleur depuis ENEMY_TYPES (identique au serveur)
-        color = ENEMY_TYPES.get(etype, ENEMY_TYPES["soldier"])["color"]
-
-        # Rendu ennemi distant : meme surface que enemy.py, avec rotation identique au serveur
-        surf    = self._get_enemy_surf(etype, color)
-        rotated = pygame.transform.rotate(surf, -e.get("facing_angle", 0))
-        r       = rotated.get_rect(center=(int(sx), int(sy)))
-        self.screen.blit(rotated, r)
-
-        # Barre HP
-        hp    = e.get("hp", 60)
-        maxhp = e.get("max_hp", 60)
-        bw = 28
-        bx = int(sx) - bw//2
-        by = int(sy) - 20
-        pygame.draw.rect(self.screen, (180, 30, 30), (bx, by, bw, 4))
-        ratio = hp / max(1, maxhp)
-        g = int(200 * ratio)
-        pygame.draw.rect(self.screen, (200 - g, g, 20), (bx, by, int(bw * ratio), 4))
-
-        # Indicateur d'etat IA (point colore)
-        ai_state = e.get("ai_state", "patrol")
-        if ai_state != "patrol":
-            state_col = {
-                "alert": (240, 200, 0),
-                "chase": (255, 100, 0),
-                "shoot": (255, 30,  30),
-                "cover": (50,  150, 255),
-            }.get(ai_state, (200, 200, 200))
-            pygame.draw.circle(self.screen, state_col, (int(sx), int(sy) - 24), 3)
+        color  = ENEMY_TYPES.get(etype, ENEMY_TYPES["soldier"])["color"]
+        surf   = self._get_enemy_surf(etype, color)
+        draw_enemy_at(self.screen, int(sx), int(sy),
+                      surf, e.get("facing_angle", 0),
+                      e.get("hp", 60), e.get("max_hp", 60),
+                      e.get("ai_state", "patrol"))
 
     def _draw_client_hud(self):
         """HUD reconstruit depuis le dict d'etat serveur."""

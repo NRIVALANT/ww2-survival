@@ -21,8 +21,7 @@ class WaveManager:
                  enemy_group, pickup_group, all_groups):
         self.tilemap      = tilemap
         self.pathfinder   = pathfinder
-        # Accepte un joueur unique (retro-compat) ou une liste
-        self.players      = players if isinstance(players, list) else [players]
+        self.players      = players
         self.enemy_group  = enemy_group
         self.pickup_group = pickup_group
         self.all_groups   = all_groups

@@ -28,6 +28,8 @@ from game.ui.menus import Menus
 from game.network.server   import GameServer
 from game.network.messages import (
     MSG_INPUT, MSG_GAME_STATE, MSG_START_GAME,
+    MSG_PLAYER_JOINED, MSG_PLAYER_LEFT,
+    MSG_PLAYER_DEAD, MSG_PLAYER_REVIVED, MSG_GAME_OVER, MSG_UPGRADE_RESULT,
     encode, make_game_state, make_lobby_state,
     serialize_player, serialize_enemy, serialize_bullet,
     serialize_grenade, serialize_pickup, serialize_explosion,
@@ -201,7 +203,7 @@ class ServerGame:
         if event.type == pygame.KEYDOWN and event.key == KEYBINDS["upgrade"]:
             if self.upgrade_machine.player_in_range(host):
                 msg = self.upgrade_machine.try_upgrade(host)
-                self.server.broadcast(encode({"type": "upgrade_result",
+                self.server.broadcast(encode({"type": MSG_UPGRADE_RESULT,
                                               "player_id": self.host_player_id,
                                               "message": msg}))
         host.handle_event(event)
@@ -210,7 +212,7 @@ class ServerGame:
         for msg in self.server.get_pending_inputs():
             mtype = msg.get("type")
 
-            if mtype == "player_joined":
+            if mtype == MSG_PLAYER_JOINED:
                 pid  = msg["player_id"]
                 name = msg["player_name"]
                 self._add_player(pid, name)
@@ -224,7 +226,7 @@ class ServerGame:
                 if self.state == STATE_LOBBY:
                     self._broadcast_lobby()
 
-            elif mtype == "player_left":
+            elif mtype == MSG_PLAYER_LEFT:
                 pid = msg["player_id"]
                 if pid in self.players:
                     name = self.players[pid].player_name
@@ -255,7 +257,7 @@ class ServerGame:
                     player = self.players.get(pid)
                     if player and self.upgrade_machine.player_in_range(player):
                         result_msg = self.upgrade_machine.try_upgrade(player)
-                        self.server.broadcast(encode({"type": "upgrade_result",
+                        self.server.broadcast(encode({"type": MSG_UPGRADE_RESULT,
                                                       "player_id": pid,
                                                       "message": result_msg}))
 
@@ -320,7 +322,7 @@ class ServerGame:
                 player.update_down(dt)
                 if player.state == "dead":
                     self.server.broadcast(encode({
-                        "type": "player_dead",
+                        "type": MSG_PLAYER_DEAD,
                         "player_id": player.player_id,
                     }))
 
@@ -332,7 +334,7 @@ class ServerGame:
                 for p in players_list
             ]
             self.server.broadcast(encode({
-                "type": "game_over",
+                "type": MSG_GAME_OVER,
                 "wave_reached": self.wave_manager.wave_number,
                 "scores": scores,
             }))
@@ -428,10 +430,9 @@ class ServerGame:
         if inp.get("shooting") and not player.is_reloading:
             if aw == "grenade":
                 if player.fire_timer <= 0 and player.ammo.get("grenade", 0) > 0:
-                    player._throw_grenade_from_angle(
+                    player._throw_grenade(
                         player.facing_angle,
                         self.grenade_group, self.explosion_group,
-                        list(self.enemy_group),
                     )
             else:
                 if player.fire_timer <= 0 and player.ammo.get(aw, 0) > 0:
@@ -468,7 +469,7 @@ class ServerGame:
                 if target.revive_progress >= 1.0:
                     target.revive()
                     self.server.broadcast(encode({
-                        "type": "player_revived",
+                        "type": MSG_PLAYER_REVIVED,
                         "player_id": pid,
                         "by_player_id": reviver_id,
                     }))
@@ -581,8 +582,12 @@ class ServerGame:
         # HUD du host
         if host:
             self.hud.draw(self.screen, host, self.wave_manager)
-            others = [p for pid, p in self.players.items()
-                      if pid != self.host_player_id]
+            others = [
+                {"player_id": p.player_id, "player_name": p.player_name,
+                 "state": p.state, "hp": p.hp, "max_hp": p.max_hp,
+                 "down_timer": p.down_timer, "revive_progress": p.revive_progress}
+                for pid, p in self.players.items() if pid != self.host_player_id
+            ]
             self.hud.draw_other_players_hud(self.screen, others)
             self.hud.draw_score_popups(self.screen, host, self.camera)
 

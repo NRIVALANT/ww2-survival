@@ -7,6 +7,30 @@ from settings import (
 )
 
 
+_EXPL_SURF_CACHE: dict = {}   # {(blast_radius, frame_idx): Surface}
+_EXPL_FRAMES = 6
+
+
+def draw_explosion_at(surface: pygame.Surface, esx: int, esy: int,
+                      blast_radius: int, progress: float):
+    """Rendu partagé d'une explosion (serveur solo et client réseau)."""
+    frame_idx = min(_EXPL_FRAMES - 1, int(progress * _EXPL_FRAMES))
+    key = (blast_radius, frame_idx)
+    if key not in _EXPL_SURF_CACHE:
+        t       = frame_idx / max(1, _EXPL_FRAMES - 1)
+        cur_r   = max(4, int(blast_radius * (0.3 + 0.7 * t)))
+        alpha   = int(200 * (1.0 - t))
+        inner_r = max(1, cur_r - 15)
+        sz      = blast_radius * 2 + 8
+        s       = pygame.Surface((sz, sz), pygame.SRCALPHA)
+        cx = cy = sz // 2
+        pygame.draw.circle(s, (255, 160, 30, alpha), (cx, cy), cur_r)
+        pygame.draw.circle(s, (255, 240, 150, alpha), (cx, cy), inner_r)
+        _EXPL_SURF_CACHE[key] = s
+    cached = _EXPL_SURF_CACHE[key]
+    surface.blit(cached, (esx - cached.get_width() // 2, esy - cached.get_height() // 2))
+
+
 class Explosion(pygame.sprite.Sprite):
     ANIM_DURATION = 0.5
     FRAMES = 6
@@ -40,7 +64,7 @@ class Explosion(pygame.sprite.Sprite):
             surfs.append(surf)
         return surfs
 
-    def update(self, dt: float, enemy_group=None, player=None):
+    def update(self, dt: float, enemy_group=None, players=None):
         if not self._damaged:
             self._damaged = True
             # Inflige les degats en zone
@@ -50,10 +74,8 @@ class Explosion(pygame.sprite.Sprite):
                     if d <= self.blast_radius:
                         dmg = int(self.damage * max(0.2, 1.0 - d / self.blast_radius))
                         enemy.take_damage(dmg)
-            # player peut etre un seul joueur OU une liste de joueurs
-            if player:
-                targets = player if isinstance(player, list) else [player]
-                for p in targets:
+            if players:
+                for p in players:
                     d = (pygame.Vector2(p.rect.center) - self.pos).length()
                     if d <= self.blast_radius:
                         dmg = int(self.damage * max(0.2, 1.0 - d / self.blast_radius))
@@ -101,7 +123,7 @@ class Grenade(pygame.sprite.Sprite):
         row = int(self.pos.y // TILE_SIZE)
         return tilemap.is_solid(col, row)
 
-    def update(self, dt: float, tilemap, enemy_group=None, player=None):
+    def update(self, dt: float, tilemap, enemy_group=None, players=None):
         # Friction
         factor = GRENADE_FRICTION ** dt
         self.velocity *= factor
@@ -123,12 +145,10 @@ class Grenade(pygame.sprite.Sprite):
         # Compte a rebours
         self.fuse_timer -= dt
         if self.fuse_timer <= 0:
-            # player peut etre un seul joueur OU une liste de joueurs
-            self._detonate(enemy_group, player)
+            self._detonate(enemy_group, players)
 
-    def _detonate(self, enemy_group, player):
-        # Normalise player en liste pour que Explosion.update() puisse iterer
-        players_list = player if isinstance(player, list) else ([player] if player else [])
+    def _detonate(self, enemy_group, players):
+        players_list = players or []
         expl = Explosion(
             self.pos.x, self.pos.y,
             self.blast_radius, self.damage,

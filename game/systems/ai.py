@@ -25,8 +25,7 @@ def _dist(a: pygame.Vector2, b: pygame.Vector2) -> float:
 class AIController:
     def __init__(self, enemy, players, tilemap, pathfinder):
         self.enemy      = enemy
-        # Accepte un joueur unique (retro-compat) ou une liste
-        self.players    = players if isinstance(players, list) else [players]
+        self.players    = players
         self.tilemap    = tilemap
         self.pathfinder = pathfinder
 

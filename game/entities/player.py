@@ -167,8 +167,7 @@ class Player(pygame.sprite.Sprite):
             aw = self.active_weapon
             if aw == "grenade":
                 if self.fire_timer <= 0 and self.ammo[aw] > 0:
-                    self._throw_grenade(world_mouse, grenade_group, explosion_group,
-                                        enemy_group)
+                    self._throw_grenade(self.facing_angle, grenade_group, explosion_group)
             else:
                 if self.fire_timer <= 0 and self.ammo[aw] > 0:
                     self._shoot(world_mouse, bullet_group, enemy_group)
@@ -225,38 +224,12 @@ class Player(pygame.sprite.Sprite):
             self.is_reloading = True
             self.reload_timer = wdata.get("reload_time", 1.5)
 
-    def _throw_grenade(self, target_world: pygame.Vector2,
-                       grenade_group, explosion_group, enemy_group):
+    def _throw_grenade(self, aim_angle_deg: float, grenade_group, explosion_group):
+        """Lance une grenade dans la direction donnée (degrés)."""
         from game.entities.grenade import Grenade
-        wdata = self.weapons["grenade"]
-        dx = target_world.x - self.pos.x
-        dy = target_world.y - self.pos.y
-        dist = math.hypot(dx, dy)
-        if dist > 0:
-            dx /= dist
-            dy /= dist
-        speed = wdata["throw_speed"]
-        Grenade(
-            self.pos.x, self.pos.y,
-            dx * speed, dy * speed,
-            fuse_time   = wdata["fuse_time"],
-            blast_radius= wdata["blast_radius"],
-            damage      = wdata["damage"],
-            groups=(grenade_group,),
-            explosion_groups=(explosion_group,),
-        )
-        self.ammo["grenade"] -= 1
-        self.fire_timer = wdata["fire_rate"]
-
-    def _throw_grenade_from_angle(self, aim_angle_deg: float,
-                                  grenade_group, explosion_group, enemy_group):
-        """Lancer une grenade depuis un angle (pour les inputs reseau)."""
-        from game.entities.grenade import Grenade
-        wdata = self.weapons["grenade"]
-        if self.fire_timer > 0 or self.ammo.get("grenade", 0) <= 0:
-            return
+        wdata     = self.weapons["grenade"]
         angle_rad = math.radians(aim_angle_deg)
-        speed = wdata["throw_speed"]
+        speed     = wdata["throw_speed"]
         Grenade(
             self.pos.x, self.pos.y,
             math.cos(angle_rad) * speed, math.sin(angle_rad) * speed,
