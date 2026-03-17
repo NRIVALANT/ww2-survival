@@ -1,0 +1,24 @@
+[Unit]
+Description=WW2 Survival — Serveur dédié
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ww2survival
+ExecStart=/opt/ww2survival/.venv/bin/python server_headless.py --autostart 15
+Restart=on-failure
+RestartSec=5
+
+# SDL headless (pas d'écran physique)
+Environment=SDL_VIDEODRIVER=dummy
+Environment=SDL_AUDIODRIVER=dummy
+
+# Sécurité : exécuter en tant qu'utilisateur non-root
+User=nobody
+Group=nogroup
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
