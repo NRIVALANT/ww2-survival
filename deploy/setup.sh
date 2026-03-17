@@ -3,20 +3,20 @@
 # Usage : bash setup.sh <GIT_REPO_URL>
 #   ex  : bash setup.sh https://github.com/ton-compte/ww2-survival.git
 #
-# À exécuter UNE seule fois après la création du Droplet (Ubuntu 22.04).
+# À exécuter UNE seule fois après la création de l'instance (Ubuntu 24.04).
 set -e
 
 REPO_URL="${1:?Usage: bash setup.sh <git_repo_url>}"
 APP_DIR="/opt/ww2survival"
 SERVICE="ww2survival"
-PYTHON="python3.11"
+PYTHON="python3"
 
 # ── 1. Paquets système ────────────────────────────────────────────────────────
 echo "==> Installation des dépendances système …"
 apt-get update -qq
 apt-get install -y -qq \
     git \
-    python3.11 python3.11-venv python3.11-dev \
+    python3 python3-venv python3-dev \
     libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
     libfreetype6-dev libportmidi-dev \
     ufw
