@@ -79,9 +79,7 @@ class DedicatedServer(ServerGame):
             dt = min(dt, 0.05)
             self._tick += 1
 
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self._quit_requested = True
+            pygame.event.get()   # vider la queue (pas de QUIT sur SDL dummy)
 
             self._process_network_messages()
             self._update(dt)
