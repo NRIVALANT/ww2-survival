@@ -194,8 +194,12 @@ class ClientGame:
 
     # ------------------------------------------------------------------
     def _handle_event(self, event):
-        # Lobby : pas d'action côté client (l'hôte lance)
         if self.state == STATE_LOBBY:
+            am_host = any(
+                p.get("is_host") and p.get("player_id") == self.player_id
+                for p in self._lobby_players
+            )
+            self.menus.handle_lobby_event(event, is_host=am_host)
             return
 
         # Gestion du menu paramètres (priorité haute)
