@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WW2 Survival</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0f;
+      color: #e8e4d0;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      background: linear-gradient(180deg, #1a1408 0%, #0a0a0f 100%);
+      border-bottom: 2px solid #c8a84b;
+      padding: 48px 24px 36px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 3.2rem;
+      letter-spacing: 0.18em;
+      color: #c8a84b;
+      text-transform: uppercase;
+      text-shadow: 0 0 24px #c8a84b88;
+    }
+
+    .subtitle {
+      margin-top: 10px;
+      font-size: 1rem;
+      color: #8a8070;
+      letter-spacing: 0.12em;
+    }
+
+    main {
+      width: 100%;
+      max-width: 860px;
+      padding: 48px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 40px;
+    }
+
+    /* ── Statut serveur ── */
+    .server-card {
+      background: #12110e;
+      border: 1px solid #2e2a20;
+      border-radius: 8px;
+      padding: 28px 32px;
+    }
+
+    .server-card h2 {
+      font-size: 0.85rem;
+      letter-spacing: 0.2em;
+      color: #8a8070;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+    }
+
+    .stat {
+      background: #0e0d0a;
+      border: 1px solid #1e1c14;
+      border-radius: 6px;
+      padding: 14px 18px;
+    }
+
+    .stat-label {
+      font-size: 0.72rem;
+      color: #5a5648;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #c8a84b;
+    }
+
+    .stat-value.online  { color: #5cb85c; }
+    .stat-value.offline { color: #c0392b; }
+    .stat-value.playing { color: #e67e22; }
+
+    /* ── Téléchargement ── */
+    .download-card {
+      background: #12110e;
+      border: 1px solid #2e2a20;
+      border-radius: 8px;
+      padding: 36px 32px;
+      text-align: center;
+    }
+
+    .download-card h2 {
+      font-size: 1.4rem;
+      color: #c8a84b;
+      margin-bottom: 10px;
+    }
+
+    .download-card p {
+      color: #6a6458;
+      font-size: 0.9rem;
+      margin-bottom: 28px;
+      line-height: 1.6;
+    }
+
+    .btn-download {
+      display: inline-block;
+      background: linear-gradient(135deg, #2a5c1a, #3a7c24);
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 1.05rem;
+      letter-spacing: 0.1em;
+      text-decoration: none;
+      padding: 16px 40px;
+      border-radius: 6px;
+      border: 2px solid #5cb85c;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+
+    .btn-download:hover {
+      background: linear-gradient(135deg, #3a7c24, #4a9c30);
+      box-shadow: 0 0 16px #5cb85c44;
+    }
+
+    .requirements {
+      margin-top: 18px;
+      font-size: 0.78rem;
+      color: #3a3830;
+    }
+
+    /* ── Instructions ── */
+    .howto-card {
+      background: #12110e;
+      border: 1px solid #2e2a20;
+      border-radius: 8px;
+      padding: 28px 32px;
+    }
+
+    .howto-card h2 {
+      font-size: 0.85rem;
+      letter-spacing: 0.2em;
+      color: #8a8070;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    ol {
+      padding-left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    ol li {
+      color: #a09880;
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    ol li span {
+      color: #c8a84b;
+    }
+
+    footer {
+      margin-top: auto;
+      padding: 24px;
+      font-size: 0.75rem;
+      color: #2e2c24;
+      letter-spacing: 0.1em;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚔ WW2 Survival</h1>
+  <p class="subtitle">Coopératif · Vagues d'ennemis · Jusqu'à 4 joueurs</p>
+</header>
+
+<main>
+
+  <!-- Statut serveur -->
+  <div class="server-card">
+    <h2>▸ Statut du serveur</h2>
+    <div class="status-grid">
+      <div class="stat">
+        <div class="stat-label">Connexion</div>
+        <div class="stat-value" id="s-online">…</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">État</div>
+        <div class="stat-value" id="s-state">…</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Joueurs</div>
+        <div class="stat-value" id="s-players">…</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Vague</div>
+        <div class="stat-value" id="s-wave">…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Téléchargement -->
+  <div class="download-card">
+    <h2>Télécharger le jeu</h2>
+    <p>
+      Aucune installation requise — lance l'exe, entre l'IP du serveur<br>
+      et rejoins la partie en quelques secondes.
+    </p>
+    <a class="btn-download"
+       href="https://ww2survival-downloads.s3.eu-north-1.amazonaws.com/ww2survival.exe"
+       download>
+      ▼ &nbsp;Télécharger WW2 Survival (.exe · Windows)
+    </a>
+    <p class="requirements">Windows 10/11 · 64 bits · ~50 MB</p>
+  </div>
+
+  <!-- Instructions -->
+  <div class="howto-card">
+    <h2>▸ Comment jouer</h2>
+    <ol>
+      <li>Télécharge et lance <span>ww2survival.exe</span></li>
+      <li>Choisis <span>Multijoueur → Rejoindre</span></li>
+      <li>Entre l'IP du serveur : <span>16.171.254.223</span></li>
+      <li>Le 1er joueur connecté est l'hôte — il lance la partie</li>
+      <li>Survivez ensemble le plus longtemps possible !</li>
+    </ol>
+  </div>
+
+</main>
+
+<footer>WW2 Survival — projet indépendant</footer>
+
+<script>
+  const STATUS_URL = 'http://16.171.254.223:8080/status';
+
+  const elOnline  = document.getElementById('s-online');
+  const elState   = document.getElementById('s-state');
+  const elPlayers = document.getElementById('s-players');
+  const elWave    = document.getElementById('s-wave');
+
+  const STATE_LABELS = {
+    lobby:    'Lobby',
+    playing:  'En jeu',
+    gameover: 'Fin de partie',
+    waiting:  'En attente',
+  };
+
+  async function fetchStatus() {
+    try {
+      const res  = await fetch(STATUS_URL, { signal: AbortSignal.timeout(4000) });
+      const data = await res.json();
+
+      elOnline.textContent  = 'En ligne';
+      elOnline.className    = 'stat-value online';
+
+      const stateKey = (data.state || '').toLowerCase();
+      elState.textContent = STATE_LABELS[stateKey] ?? data.state;
+      elState.className   = stateKey === 'playing' ? 'stat-value playing' : 'stat-value';
+
+      elPlayers.textContent = `${data.players} / ${data.max_players}`;
+      elWave.textContent    = data.wave > 0 ? `Vague ${data.wave}` : '—';
+
+    } catch {
+      elOnline.textContent  = 'Hors ligne';
+      elOnline.className    = 'stat-value offline';
+      elState.textContent   = '—';
+      elPlayers.textContent = '—';
+      elWave.textContent    = '—';
+    }
+  }
+
+  fetchStatus();
+  setInterval(fetchStatus, 5000);
+</script>
+
+</body>
+</html>
