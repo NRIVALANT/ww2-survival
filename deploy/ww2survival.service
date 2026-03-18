@@ -14,8 +14,8 @@ Environment=SDL_VIDEODRIVER=dummy
 Environment=SDL_AUDIODRIVER=dummy
 
 # Sécurité : exécuter en tant qu'utilisateur non-root
-User=nobody
-Group=nogroup
+User=ubuntu
+Group=ubuntu
 
 StandardOutput=journal
 StandardError=journal
