@@ -260,6 +260,14 @@ class ServerGame:
                         self.server.broadcast(encode({"type": MSG_UPGRADE_RESULT,
                                                       "player_id": pid,
                                                       "message": result_msg}))
+                elif inp.get("type") == "start_game_req":
+                    self._on_start_game_req(pid)
+
+    def _on_start_game_req(self, pid: int) -> None:
+        """Hook : appelé quand un client demande à lancer la partie.
+        No-op dans ServerGame (le host local gère ça via le menu).
+        Surchargé dans DedicatedServer.
+        """
 
     # ------------------------------------------------------------------
     def _broadcast_lobby(self):

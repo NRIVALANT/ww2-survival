@@ -364,12 +364,18 @@ class ClientGame:
         # ---- Lobby ----
         if self.state == STATE_LOBBY:
             pygame.mouse.set_visible(True)
-            self.menus.draw_lobby(
+            am_host = any(
+                p.get("is_host") and p.get("player_id") == self.player_id
+                for p in self._lobby_players
+            )
+            result = self.menus.draw_lobby(
                 self.screen,
                 players=self._lobby_players,
                 local_player_id=self.player_id,
-                is_host=False,
+                is_host=am_host,
             )
+            if result == "start" and am_host:
+                self.net.send_input({"type": "start_game_req"})
             return
 
         if self.state == STATE_SETTINGS:
