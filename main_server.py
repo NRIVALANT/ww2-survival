@@ -236,6 +236,7 @@ class ServerGame:
                     print(f"[-] {name} (ID {pid}) a quitte la partie")
                     if self.state == STATE_LOBBY:
                         self._broadcast_lobby()
+                    self._on_player_left(pid)
 
             elif "input" in msg:
                 pid = msg["player_id"]
@@ -267,6 +268,11 @@ class ServerGame:
         """Hook : appelé quand un client demande à lancer la partie.
         No-op dans ServerGame (le host local gère ça via le menu).
         Surchargé dans DedicatedServer.
+        """
+
+    def _on_player_left(self, pid: int) -> None:
+        """Hook : appelé après qu'un joueur a quitté la partie.
+        No-op dans ServerGame. Surchargé dans DedicatedServer.
         """
 
     # ------------------------------------------------------------------

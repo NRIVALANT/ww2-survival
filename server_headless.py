@@ -86,6 +86,12 @@ class DedicatedServer(ServerGame):
 
     # ------------------------------------------------------------------ réseau
 
+    def _on_player_left(self, pid: int) -> None:
+        """Quand tous les joueurs ont quitté en cours de partie → reset lobby."""
+        if not self.players and self.state == STATE_PLAYING:
+            print("[dédié] Plus aucun joueur — réinitialisation du lobby.")
+            self._reset_game()
+
     def _on_start_game_req(self, pid: int) -> None:
         """L'hôte virtuel (1er connecté) demande à lancer la partie."""
         if not self.players or self.state != STATE_LOBBY:
